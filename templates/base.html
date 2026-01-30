@@ -4,16 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}FOLIO Migration{% endblock %} - FOLIO Migration Web</title>
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="{{ root_path }}/static/css/styles.css">
     {% block head %}{% endblock %}
 </head>
 <body>
     <nav class="navbar">
-        <a href="/" class="logo">FOLIO Migration</a>
+        <a href="{{ root_path }}/" class="logo">FOLIO Migration</a>
         <ul>
-            <li><a href="/">Dashboard</a></li>
-            <li><a href="/clients">Projects</a></li>
-            <li><a href="/clients/new">New Project</a></li>
+            <li><a href="{{ root_path }}/">Dashboard</a></li>
+            <li><a href="{{ root_path }}/clients">Projects</a></li>
+            <li><a href="{{ root_path }}/clients/new">New Project</a></li>
         </ul>
     </nav>
 
@@ -25,7 +25,8 @@
         <p>FOLIO Migration Web Portal v0.1.0</p>
     </footer>
 
-    <script src="/static/js/main.js"></script>
+    <script>window.ROOT_PATH = "{{ root_path }}";</script>
+    <script src="{{ root_path }}/static/js/main.js"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

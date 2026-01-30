@@ -46,6 +46,9 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 # Templates
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
+# Add root_path to template globals
+templates.env.globals["root_path"] = settings.root_path
+
 
 # Import and include API routers
 from .api import clients, credentials, files, config_editor, health  # noqa: E402

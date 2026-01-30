@@ -5,7 +5,7 @@
 {% block content %}
 <div class="flex-between mb-2">
     <h1>Client Projects</h1>
-    <a href="/clients/new" class="btn btn-primary">New Project</a>
+    <a href="{{ root_path }}/clients/new" class="btn btn-primary">New Project</a>
 </div>
 
 <div class="card">
@@ -41,7 +41,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadClients() {
     try {
-        const response = await fetch('/api/clients');
+        const response = await fetch(ROOT_PATH + '/api/clients');
         const clients = await response.json();
 
         const tbody = document.getElementById('clients-table');
@@ -50,7 +50,7 @@ async function loadClients() {
         } else {
             tbody.innerHTML = clients.map(client => `
                 <tr>
-                    <td><a href="/clients/${client.client_code}">${client.client_code}</a></td>
+                    <td><a href="${ROOT_PATH}/clients/${client.client_code}">${client.client_code}</a></td>
                     <td>${client.client_name}</td>
                     <td>${client.client_type}</td>
                     <td>${client.pm_name}</td>
@@ -58,7 +58,7 @@ async function loadClients() {
                     <td>${client.credentials_set ? '<span class="badge badge-success">Set</span>' : '<span class="badge badge-warning">Not Set</span>'}</td>
                     <td>${formatDate(client.created_at)}</td>
                     <td class="flex gap-1">
-                        <a href="/clients/${client.client_code}" class="btn btn-sm btn-secondary">View</a>
+                        <a href="${ROOT_PATH}/clients/${client.client_code}" class="btn btn-sm btn-secondary">View</a>
                         <button onclick="deleteClient('${client.client_code}')" class="btn btn-sm btn-danger">Delete</button>
                     </td>
                 </tr>
@@ -75,7 +75,7 @@ async function deleteClient(clientCode) {
     }
 
     try {
-        const response = await fetch(`/api/clients/${clientCode}`, { method: 'DELETE' });
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}`, { method: 'DELETE' });
         if (response.ok) {
             await loadClients();
         } else {

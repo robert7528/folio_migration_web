@@ -5,7 +5,7 @@
 {% block content %}
 <div class="flex-between mb-2">
     <h1>File Management: {{ client_code }}</h1>
-    <a href="/clients/{{ client_code }}" class="btn btn-secondary">Back to Project</a>
+    <a href="{{ root_path }}/clients/{{ client_code }}" class="btn btn-secondary">Back to Project</a>
 </div>
 
 <div class="grid grid-2">
@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadIterations() {
     try {
-        const response = await fetch(`/api/clients/${clientCode}/iterations`);
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/iterations`);
         const data = await response.json();
 
         const select = document.getElementById('iteration');
@@ -123,7 +123,7 @@ async function loadIterations() {
 
 async function loadFiles() {
     try {
-        let url = `/api/clients/${clientCode}/files`;
+        let url = `${ROOT_PATH}/api/clients/${clientCode}/files`;
         if (currentFolder) {
             url += `?folder=${encodeURIComponent(currentFolder)}`;
         }
@@ -152,7 +152,7 @@ async function loadFiles() {
                     <td class="flex gap-1">
                         ${file.is_dir
                             ? ''
-                            : `<a href="/api/clients/${clientCode}/files/${encodeURIComponent(file.path)}" class="btn btn-sm btn-secondary">Download</a>`
+                            : `<a href="${ROOT_PATH}/api/clients/${clientCode}/files/${encodeURIComponent(file.path)}" class="btn btn-sm btn-secondary">Download</a>`
                         }
                         <button onclick="deleteFile('${file.path}')" class="btn btn-sm btn-danger">Delete</button>
                     </td>
@@ -184,7 +184,7 @@ async function deleteFile(path) {
     if (!confirm(`Delete "${path}"?`)) return;
 
     try {
-        const response = await fetch(`/api/clients/${clientCode}/files/${encodeURIComponent(path)}`, {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/files/${encodeURIComponent(path)}`, {
             method: 'DELETE'
         });
         if (response.ok) {
@@ -254,11 +254,11 @@ async function uploadFile(file, type) {
 
     let url;
     if (type === 'mapping') {
-        url = `/api/clients/${clientCode}/files/upload-mapping`;
+        url = `${ROOT_PATH}/api/clients/${clientCode}/files/upload-mapping`;
     } else {
         formData.append('target_folder', document.getElementById('target-folder').value);
         formData.append('iteration', document.getElementById('iteration').value);
-        url = `/api/clients/${clientCode}/files/upload`;
+        url = `${ROOT_PATH}/api/clients/${clientCode}/files/upload`;
     }
 
     try {

@@ -5,7 +5,7 @@
 {% block content %}
 <div class="flex-between mb-2">
     <h1>Edit Configuration: {{ filename }}</h1>
-    <a href="/clients/{{ client_code }}" class="btn btn-secondary">Back to Project</a>
+    <a href="{{ root_path }}/clients/{{ client_code }}" class="btn btn-secondary">Back to Project</a>
 </div>
 
 <div class="card">
@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadConfig() {
     try {
-        const response = await fetch(`/api/clients/${clientCode}/config/${filename}`);
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/config/${filename}`);
         if (!response.ok) {
             throw new Error('Failed to load configuration');
         }
@@ -68,7 +68,7 @@ async function validateConfig() {
     try {
         const content = JSON.parse(editor.value);
 
-        const response = await fetch(`/api/clients/${clientCode}/config/validate`, {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/config/validate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(content)
@@ -93,7 +93,7 @@ async function saveConfig() {
     try {
         const content = JSON.parse(editor.value);
 
-        const response = await fetch(`/api/clients/${clientCode}/config/${filename}`, {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/config/${filename}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(content)

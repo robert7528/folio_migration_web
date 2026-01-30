@@ -37,7 +37,7 @@
 <div class="card mt-2">
     <div class="card-header">
         <span class="card-title">Recent Projects</span>
-        <a href="/clients/new" class="btn btn-primary">New Project</a>
+        <a href="{{ root_path }}/clients/new" class="btn btn-primary">New Project</a>
     </div>
 
     <div class="table-container">
@@ -66,7 +66,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', async () => {
     try {
-        const response = await fetch('/api/clients');
+        const response = await fetch(ROOT_PATH + '/api/clients');
         const clients = await response.json();
 
         // Update stats
@@ -77,17 +77,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Update table
         const tbody = document.getElementById('projects-table');
         if (clients.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No projects yet. <a href="/clients/new">Create one</a></td></tr>';
+            tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">No projects yet. <a href="${ROOT_PATH}/clients/new">Create one</a></td></tr>`;
         } else {
             tbody.innerHTML = clients.slice(0, 10).map(client => `
                 <tr>
-                    <td><a href="/clients/${client.client_code}">${client.client_code}</a></td>
+                    <td><a href="${ROOT_PATH}/clients/${client.client_code}">${client.client_code}</a></td>
                     <td>${client.client_name}</td>
                     <td>${client.pm_name}</td>
                     <td><span class="badge badge-${getStatusClass(client.status)}">${client.status}</span></td>
                     <td>${formatDate(client.created_at)}</td>
                     <td>
-                        <a href="/clients/${client.client_code}" class="btn btn-sm btn-secondary">View</a>
+                        <a href="${ROOT_PATH}/clients/${client.client_code}" class="btn btn-sm btn-secondary">View</a>
                     </td>
                 </tr>
             `).join('');
