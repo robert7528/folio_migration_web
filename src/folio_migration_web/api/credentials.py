@@ -152,23 +152,33 @@ async def _test_folio_connection(
         try:
             response = await client.post(auth_url, json=payload, headers=headers)
 
-            if response.status_code == 201:
+            # FOLIO returns 201 (older) or 200 (newer) on successful auth
+            # Check for token in header or body
+            token = response.headers.get("x-okapi-token")
+
+            # For newer FOLIO versions, token might be in response body
+            if not token and response.status_code == 200:
+                try:
+                    body = response.json()
+                    token = body.get("okapiToken") or body.get("accessToken")
+                except Exception:
+                    pass
+
+            if response.status_code in (200, 201) and token:
                 # Authentication successful
                 # Try to get FOLIO version
                 folio_version = None
                 try:
-                    token = response.headers.get("x-okapi-token")
-                    if token:
-                        version_headers = {
-                            "x-okapi-tenant": tenant_id,
-                            "x-okapi-token": token,
-                        }
-                        version_response = await client.get(
-                            f"{folio_url}/_/version",
-                            headers=version_headers,
-                        )
-                        if version_response.status_code == 200:
-                            folio_version = version_response.text.strip()
+                    version_headers = {
+                        "x-okapi-tenant": tenant_id,
+                        "x-okapi-token": token,
+                    }
+                    version_response = await client.get(
+                        f"{folio_url}/_/version",
+                        headers=version_headers,
+                    )
+                    if version_response.status_code == 200:
+                        folio_version = version_response.text.strip()
                 except Exception:
                     pass
 
@@ -186,6 +196,12 @@ async def _test_folio_connection(
                 return ConnectionTestResult(
                     success=False,
                     message="Invalid tenant ID or request format",
+                )
+            elif response.status_code in (200, 201):
+                # Status OK but no token found
+                return ConnectionTestResult(
+                    success=False,
+                    message="Authentication response missing token. Check credentials.",
                 )
             else:
                 return ConnectionTestResult(
