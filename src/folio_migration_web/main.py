@@ -37,6 +37,7 @@ app = FastAPI(
     description="Web application for FOLIO migration project management",
     version="0.1.0",
     lifespan=lifespan,
+    root_path=settings.root_path,
 )
 
 # Mount static files

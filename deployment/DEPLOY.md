@@ -54,6 +54,7 @@ nano .env
 ```
 APP_ENV=production
 DEBUG=false
+ROOT_PATH=/folio
 ```
 
 ### 5. 安裝 Systemd 服務
@@ -68,54 +69,30 @@ sudo systemctl start folio-migration-web
 sudo systemctl status folio-migration-web
 ```
 
-### 6. 設定 Nginx（不影響現有設定）
+### 6. 設定 Nginx
 
-複製設定檔到 conf.d（使用獨立檔名）：
-
-```bash
-sudo cp deployment/nginx-folio-migration.conf /etc/nginx/conf.d/folio-migration.conf
-```
-
-編輯設定檔，修改 port 和 server_name：
+複製到 service 目錄（符合您現有架構）：
 
 ```bash
-sudo nano /etc/nginx/conf.d/folio-migration.conf
-```
-
-重點修改：
-- `listen 8080;` → 改成您要的 port（如 80 沒被佔用可改成 80）
-- `server_name _;` → 改成您的域名或 IP
-
-測試並重載：
-
-```bash
+sudo cp deployment/nginx-folio-migration.conf /etc/nginx/conf.d/service/folio-migration.conf
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-### 7. 開放防火牆（如需要）
-
-```bash
-# 如果使用 8080 port
-sudo firewall-cmd --permanent --add-port=8080/tcp
-sudo firewall-cmd --reload
-```
-
-## 驗證安裝
+### 7. 驗證安裝
 
 ```bash
 # 檢查服務狀態
 sudo systemctl status folio-migration-web
 
-# 檢查 log
-sudo journalctl -u folio-migration-web -f
-
 # 測試 API（直接連 uvicorn）
 curl http://localhost:8000/api/health
 
-# 測試 Nginx（假設用 8080）
-curl http://localhost:8080/api/health
+# 測試透過 Nginx
+curl https://your-domain/folio/api/health
 ```
+
+存取網址：`https://your-domain/folio/`
 
 ## 更新程式
 
@@ -159,9 +136,6 @@ ss -tlnp | grep 8000
 
 ### 檔案上傳失敗
 ```bash
-# 檢查 nginx client_max_body_size
-sudo nginx -T | grep client_max_body_size
-
 # 檢查磁碟空間
 df -h /folio/
 ```

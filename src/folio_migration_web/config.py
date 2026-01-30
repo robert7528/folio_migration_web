@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     # Server
     host: str = "127.0.0.1"
     port: int = 8000
+    root_path: str = ""  # Set to "/folio" when behind nginx proxy
 
     # Database
     database_url: str = "sqlite:///./data/migration.db"
