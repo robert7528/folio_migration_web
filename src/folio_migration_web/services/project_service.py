@@ -1,0 +1,439 @@
+"""Project creation and management service.
+
+This module replicates the functionality of setup_client.sh for creating
+new client migration projects.
+"""
+
+import json
+import subprocess
+import sys
+from datetime import date
+from pathlib import Path
+from typing import Optional
+
+from ..config import get_settings
+from ..models.client import ClientCreate
+from .folder_service import create_iteration_folders
+
+settings = get_settings()
+
+
+class ProjectService:
+    """Service for managing client migration projects."""
+
+    def __init__(self, clients_dir: Path | None = None):
+        """Initialize with clients directory."""
+        self.clients_dir = clients_dir or settings.clients_dir
+        self.clients_dir.mkdir(parents=True, exist_ok=True)
+
+    def get_client_path(self, client_code: str) -> Path:
+        """Get the path to a client's project directory."""
+        return self.clients_dir / client_code
+
+    def client_exists(self, client_code: str) -> bool:
+        """Check if a client project already exists."""
+        return self.get_client_path(client_code).exists()
+
+    def create_project(
+        self,
+        client: ClientCreate,
+        skip_venv: bool = False,
+        skip_git_clone: bool = False,
+    ) -> dict:
+        """
+        Create a new client migration project.
+
+        This replicates the 10 steps from setup_client.sh:
+        1. Clone migration_repo_template
+        2. Initialize Git
+        3. Create virtual environment
+        4. Install folio_migration_tools
+        5. Create .env
+        6. Create CLIENT_INFO.md
+        7. Create marc_config.json
+        8. Create folder structure
+        9. Create migration script
+        10. Update .gitignore
+
+        Args:
+            client: Client creation data
+            skip_venv: Skip virtual environment creation (for testing)
+            skip_git_clone: Skip git clone (use local copy instead)
+
+        Returns:
+            Dictionary with creation status and details
+        """
+        client_path = self.get_client_path(client.client_code)
+
+        if client_path.exists():
+            raise ValueError(f"Client project '{client.client_code}' already exists")
+
+        result = {
+            "client_code": client.client_code,
+            "path": str(client_path),
+            "steps": [],
+            "tool_version": None,
+            "python_version": None,
+        }
+
+        try:
+            # Step 1: Clone or create project directory
+            if skip_git_clone:
+                client_path.mkdir(parents=True, exist_ok=True)
+                result["steps"].append({"step": 1, "name": "create_directory", "status": "success"})
+            else:
+                self._clone_template(client_path)
+                result["steps"].append({"step": 1, "name": "clone_template", "status": "success"})
+
+            # Step 2: Initialize Git
+            self._init_git(client_path)
+            result["steps"].append({"step": 2, "name": "init_git", "status": "success"})
+
+            # Step 3 & 4: Virtual environment and install tools
+            if not skip_venv:
+                self._create_venv(client_path)
+                result["steps"].append({"step": 3, "name": "create_venv", "status": "success"})
+
+                tool_version = self._install_tools(client_path)
+                result["tool_version"] = tool_version
+                result["python_version"] = f"{sys.version_info.major}.{sys.version_info.minor}"
+                result["steps"].append({"step": 4, "name": "install_tools", "status": "success"})
+            else:
+                result["steps"].append({"step": 3, "name": "create_venv", "status": "skipped"})
+                result["steps"].append({"step": 4, "name": "install_tools", "status": "skipped"})
+
+            # Step 5: Create .env
+            self._create_env_file(client_path, client.client_name)
+            result["steps"].append({"step": 5, "name": "create_env", "status": "success"})
+
+            # Step 6: Create CLIENT_INFO.md
+            start_date = client.start_date or date.today()
+            self._create_client_info(client_path, client, start_date, result.get("tool_version"))
+            result["steps"].append({"step": 6, "name": "create_client_info", "status": "success"})
+
+            # Step 7: Create marc_config.json
+            self._create_config(client_path, client)
+            result["steps"].append({"step": 7, "name": "create_config", "status": "success"})
+
+            # Step 8: Create folder structure
+            iteration_name = f"{client.client_code}_migration"
+            create_iteration_folders(client_path, iteration_name)
+            result["steps"].append({"step": 8, "name": "create_folders", "status": "success"})
+
+            # Step 9: Create migration script
+            self._create_migration_script(client_path)
+            result["steps"].append({"step": 9, "name": "create_script", "status": "success"})
+
+            # Step 10: Update .gitignore
+            self._update_gitignore(client_path)
+            result["steps"].append({"step": 10, "name": "update_gitignore", "status": "success"})
+
+            result["status"] = "success"
+
+        except Exception as e:
+            result["status"] = "error"
+            result["error"] = str(e)
+            # Cleanup on failure
+            if client_path.exists():
+                import shutil
+                shutil.rmtree(client_path, ignore_errors=True)
+
+        return result
+
+    def _clone_template(self, client_path: Path):
+        """Clone the migration template repository."""
+        subprocess.run(
+            ["git", "clone", settings.template_repo_url, str(client_path)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    def _init_git(self, client_path: Path):
+        """Initialize a fresh Git repository."""
+        git_dir = client_path / ".git"
+        if git_dir.exists():
+            import shutil
+            shutil.rmtree(git_dir)
+
+        subprocess.run(
+            ["git", "init"],
+            cwd=client_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    def _create_venv(self, client_path: Path):
+        """Create Python virtual environment using uv."""
+        subprocess.run(
+            ["uv", "venv", ".venv", "--python", "3.13"],
+            cwd=client_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    def _install_tools(self, client_path: Path) -> Optional[str]:
+        """Install folio_migration_tools and return version."""
+        # Determine pip path based on OS
+        if sys.platform == "win32":
+            pip_path = client_path / ".venv" / "Scripts" / "pip"
+        else:
+            pip_path = client_path / ".venv" / "bin" / "pip"
+
+        subprocess.run(
+            [str(pip_path), "install", "folio_migration_tools"],
+            cwd=client_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        # Try to get version
+        try:
+            if sys.platform == "win32":
+                tool_path = client_path / ".venv" / "Scripts" / "folio-migration-tools"
+            else:
+                tool_path = client_path / ".venv" / "bin" / "folio-migration-tools"
+
+            result = subprocess.run(
+                [str(tool_path), "--version"],
+                capture_output=True,
+                text=True,
+            )
+            # Extract version from output
+            import re
+            match = re.search(r"(\d+\.\d+\.\d+)", result.stdout + result.stderr)
+            if match:
+                return match.group(1)
+        except Exception:
+            pass
+
+        return None
+
+    def _create_env_file(self, client_path: Path, client_name: str):
+        """Create .env file for credentials."""
+        env_content = f"""# {client_name} FOLIO Credentials
+# These will be set via the web interface
+USERNAME=
+PASSWORD=
+"""
+        env_path = client_path / ".env"
+        env_path.write_text(env_content, encoding="utf-8")
+
+    def _create_client_info(
+        self,
+        client_path: Path,
+        client: ClientCreate,
+        start_date: date,
+        tool_version: Optional[str],
+    ):
+        """Create CLIENT_INFO.md documentation file."""
+        content = f"""# {client.client_name} - FOLIO Migration Project
+
+## Client Information
+- **Client Code**: {client.client_code}
+- **Client Name**: {client.client_name}
+- **Client Type**: {client.client_type.value}
+- **Project Manager**: {client.pm_name}
+- **Project Start Date**: {start_date.isoformat()}
+
+## FOLIO Environment
+- **Gateway URL**: {client.folio_url}
+- **Tenant ID**: {client.tenant_id}
+- **Tool Version**: folio_migration_tools {tool_version or 'N/A'}
+
+## Project Status
+- [ ] Requirements Confirmed
+- [ ] Environment Setup Complete
+- [ ] Test Migration
+- [ ] Production Migration
+- [ ] Verification Complete
+- [ ] Project Closed
+
+## Contact Information
+- **Client Contact**:
+- **Email**:
+- **Phone**:
+
+## Important Dates
+- Project Start: {start_date.isoformat()}
+- Test Migration:
+- Production Migration:
+- Acceptance Date:
+
+## Notes
+
+"""
+        info_path = client_path / "CLIENT_INFO.md"
+        info_path.write_text(content, encoding="utf-8")
+
+    def _create_config(self, client_path: Path, client: ClientCreate):
+        """Create marc_config.json configuration file."""
+        config = {
+            "libraryInformation": {
+                "tenantId": client.tenant_id,
+                "multiFieldDelimiter": "<^>",
+                "okapiUrl": client.folio_url,
+                "okapiUsername": "",
+                "logLevelDebug": False,
+                "libraryName": client.client_name,
+                "folioRelease": "sunflower",
+                "addTimeStampToFileNames": False,
+                "iterationIdentifier": f"{client.client_code}_migration",
+            },
+            "migrationTasks": [
+                {
+                    "name": "transform_bibs",
+                    "addAdministrativeNotesWithLegacyIds": True,
+                    "migrationTaskType": "BibsTransformer",
+                    "ilsFlavour": "tag001",
+                    "tags_to_delete": [],
+                    "files": [{"file_name": "marc_bibs.mrc", "discovery_suppressed": False}],
+                    "updateHridSettings": False,
+                },
+                {
+                    "name": "post_instances",
+                    "migrationTaskType": "BatchPoster",
+                    "objectType": "Instances",
+                    "batchSize": 250,
+                    "files": [{"file_name": "folio_instances_transform_bibs.json"}],
+                },
+                {
+                    "name": "post_srs_bibs",
+                    "migrationTaskType": "BatchPoster",
+                    "objectType": "SRS",
+                    "batchSize": 250,
+                    "files": [{"file_name": "folio_srs_instances_transform_bibs.json"}],
+                },
+            ],
+        }
+
+        config_dir = client_path / "mapping_files"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        config_path = config_dir / "marc_config.json"
+        config_path.write_text(json.dumps(config, indent=4, ensure_ascii=False), encoding="utf-8")
+
+    def _create_migration_script(self, client_path: Path):
+        """Create migrate_bibs.sh script."""
+        script_content = '''#!/bin/bash
+# Bibliographic Migration Script
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+CLIENT_CODE=$(basename "$SCRIPT_DIR")
+CONFIG_FILE="mapping_files/marc_config.json"
+
+echo "======================================"
+echo "  $CLIENT_CODE - FOLIO Bibliographic Migration"
+echo "======================================"
+
+# Activate virtual environment
+source .venv/bin/activate
+
+# Check configuration file
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Error: Configuration file $CONFIG_FILE not found"
+    exit 1
+fi
+
+# Check .env
+if [ ! -f ".env" ]; then
+    echo "Error: .env file not found"
+    exit 1
+fi
+
+# Confirm execution
+read -p "Confirm migration execution? (y/N): " confirm
+if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+    echo "Cancelled"
+    exit 0
+fi
+
+# Record start time
+START_TIME=$(date +%s)
+LOG_FILE="logs/migration_$(date +%Y%m%d_%H%M%S).log"
+mkdir -p logs
+
+echo "Start time: $(date)" | tee -a "$LOG_FILE"
+
+# Execute migration
+echo ""
+echo "Step 1/3: Transforming bibliographic data..." | tee -a "$LOG_FILE"
+folio-migration-tools "$CONFIG_FILE" --base_folder_path ./ transform_bibs 2>&1 | tee -a "$LOG_FILE"
+
+echo ""
+echo "Step 2/3: Posting Instances..." | tee -a "$LOG_FILE"
+folio-migration-tools "$CONFIG_FILE" --base_folder_path ./ post_instances 2>&1 | tee -a "$LOG_FILE"
+
+echo ""
+echo "Step 3/3: Posting SRS..." | tee -a "$LOG_FILE"
+folio-migration-tools "$CONFIG_FILE" --base_folder_path ./ post_srs_bibs 2>&1 | tee -a "$LOG_FILE"
+
+# Calculate execution time
+END_TIME=$(date +%s)
+DURATION=$((END_TIME - START_TIME))
+echo ""
+echo "======================================"
+echo "Migration Complete!"
+echo "End time: $(date)"
+echo "Duration: $((DURATION / 60)) min $((DURATION % 60)) sec"
+echo "======================================"
+echo ""
+echo "Reports: iterations/*/reports/"
+echo "Log file: $LOG_FILE"
+
+deactivate
+'''
+        script_path = client_path / "migrate_bibs.sh"
+        script_path.write_text(script_content, encoding="utf-8")
+
+        # Make executable on Unix
+        try:
+            script_path.chmod(0o755)
+        except (OSError, AttributeError):
+            pass
+
+    def _update_gitignore(self, client_path: Path):
+        """Update .gitignore with client-specific entries."""
+        gitignore_additions = """
+# Client-specific ignores
+.env
+*.env
+logs/
+iterations/*/results/
+iterations/*/reports/
+CLIENT_INFO.md
+.venv/
+"""
+        gitignore_path = client_path / ".gitignore"
+        if gitignore_path.exists():
+            existing = gitignore_path.read_text(encoding="utf-8")
+            gitignore_path.write_text(existing + gitignore_additions, encoding="utf-8")
+        else:
+            gitignore_path.write_text(gitignore_additions.strip(), encoding="utf-8")
+
+    def delete_project(self, client_code: str) -> bool:
+        """Delete a client project directory."""
+        import shutil
+        client_path = self.get_client_path(client_code)
+        if client_path.exists():
+            shutil.rmtree(client_path)
+            return True
+        return False
+
+
+# Singleton instance
+_service: ProjectService | None = None
+
+
+def get_project_service() -> ProjectService:
+    """Get the project service singleton."""
+    global _service
+    if _service is None:
+        _service = ProjectService()
+    return _service

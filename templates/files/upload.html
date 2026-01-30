@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+
+{% block title %}File Management{% endblock %}
+
+{% block content %}
+<div class="flex-between mb-2">
+    <h1>File Management: {{ client_code }}</h1>
+    <a href="/clients/{{ client_code }}" class="btn btn-secondary">Back to Project</a>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Upload Source Data</span>
+        </div>
+
+        <div class="form-group">
+            <label for="iteration">Iteration</label>
+            <select id="iteration">
+                <option value="">Loading...</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="target-folder">Target Folder</label>
+            <select id="target-folder">
+                <option value="instances">instances (MARC bibs)</option>
+                <option value="holdings">holdings</option>
+                <option value="items">items</option>
+                <option value="users">users</option>
+                <option value="loans">loans</option>
+                <option value="courses">courses</option>
+            </select>
+        </div>
+
+        <div class="file-drop-zone" id="drop-zone">
+            <input type="file" id="file-input" multiple accept=".mrc,.marc,.json,.csv,.tsv,.txt,.xml">
+            <p>Drop files here or click to upload</p>
+            <p class="text-muted">Supported: .mrc, .marc, .json, .csv, .tsv, .txt, .xml (max 500MB)</p>
+        </div>
+
+        <div id="upload-progress" style="display: none;" class="mt-2">
+            <div class="progress-bar">
+                <div class="progress-fill" id="upload-fill" style="width: 0%"></div>
+            </div>
+            <p class="progress-status" id="upload-status"></p>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Upload Mapping Files</span>
+        </div>
+
+        <div class="file-drop-zone" id="mapping-drop-zone">
+            <input type="file" id="mapping-file-input" accept=".json,.tsv,.csv,.txt">
+            <p>Drop mapping files here or click to upload</p>
+            <p class="text-muted">Supported: .json, .tsv, .csv, .txt</p>
+        </div>
+
+        <div id="mapping-upload-status" class="mt-2" style="display: none;"></div>
+    </div>
+</div>
+
+<div class="card mt-2">
+    <div class="card-header">
+        <span class="card-title">Current Folder: <span id="current-folder">/</span></span>
+        <button class="btn btn-secondary btn-sm" onclick="goUp()" id="go-up-btn" style="display: none;">Go Up</button>
+    </div>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Size</th>
+                    <th>Modified</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="files-table">
+                <tr>
+                    <td colspan="4" class="text-center text-muted">Loading...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const clientCode = '{{ client_code }}';
+let currentFolder = null;
+
+document.addEventListener('DOMContentLoaded', async () => {
+    // Get folder from URL if present
+    const urlParams = new URLSearchParams(window.location.search);
+    currentFolder = urlParams.get('folder');
+
+    await loadIterations();
+    await loadFiles();
+    setupUpload();
+});
+
+async function loadIterations() {
+    try {
+        const response = await fetch(`/api/clients/${clientCode}/iterations`);
+        const data = await response.json();
+
+        const select = document.getElementById('iteration');
+        select.innerHTML = data.iterations.map(iter =>
+            `<option value="${iter}">${iter}</option>`
+        ).join('');
+
+        if (data.iterations.length === 0) {
+            select.innerHTML = `<option value="${clientCode}_migration">${clientCode}_migration</option>`;
+        }
+    } catch (error) {
+        console.error('Error loading iterations:', error);
+    }
+}
+
+async function loadFiles() {
+    try {
+        let url = `/api/clients/${clientCode}/files`;
+        if (currentFolder) {
+            url += `?folder=${encodeURIComponent(currentFolder)}`;
+        }
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        document.getElementById('current-folder').textContent = currentFolder || '/';
+        document.getElementById('go-up-btn').style.display = currentFolder ? 'inline-block' : 'none';
+
+        const tbody = document.getElementById('files-table');
+        if (data.files.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No files in this folder</td></tr>';
+        } else {
+            tbody.innerHTML = data.files.map(file => `
+                <tr>
+                    <td>
+                        ${file.is_dir ? '📁' : '📄'}
+                        ${file.is_dir
+                            ? `<a href="?folder=${encodeURIComponent(file.path)}" style="text-decoration: none;">${file.name}</a>`
+                            : file.name
+                        }
+                    </td>
+                    <td>${file.is_dir ? '-' : formatSize(file.size)}</td>
+                    <td>${formatDate(file.modified)}</td>
+                    <td class="flex gap-1">
+                        ${file.is_dir
+                            ? ''
+                            : `<a href="/api/clients/${clientCode}/files/${encodeURIComponent(file.path)}" class="btn btn-sm btn-secondary">Download</a>`
+                        }
+                        <button onclick="deleteFile('${file.path}')" class="btn btn-sm btn-danger">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+    } catch (error) {
+        console.error('Error loading files:', error);
+    }
+}
+
+function goUp() {
+    if (!currentFolder) return;
+    const parts = currentFolder.split('/');
+    parts.pop();
+    currentFolder = parts.length > 0 ? parts.join('/') : null;
+
+    const url = new URL(window.location);
+    if (currentFolder) {
+        url.searchParams.set('folder', currentFolder);
+    } else {
+        url.searchParams.delete('folder');
+    }
+    window.history.pushState({}, '', url);
+    loadFiles();
+}
+
+async function deleteFile(path) {
+    if (!confirm(`Delete "${path}"?`)) return;
+
+    try {
+        const response = await fetch(`/api/clients/${clientCode}/files/${encodeURIComponent(path)}`, {
+            method: 'DELETE'
+        });
+        if (response.ok) {
+            await loadFiles();
+        } else {
+            const error = await response.json();
+            alert(error.detail || 'Delete failed');
+        }
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+function setupUpload() {
+    // Source data upload
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        uploadFiles(e.dataTransfer.files, 'source');
+    });
+    fileInput.addEventListener('change', () => uploadFiles(fileInput.files, 'source'));
+
+    // Mapping file upload
+    const mappingDropZone = document.getElementById('mapping-drop-zone');
+    const mappingFileInput = document.getElementById('mapping-file-input');
+
+    mappingDropZone.addEventListener('click', () => mappingFileInput.click());
+    mappingDropZone.addEventListener('dragover', (e) => { e.preventDefault(); mappingDropZone.classList.add('dragover'); });
+    mappingDropZone.addEventListener('dragleave', () => mappingDropZone.classList.remove('dragover'));
+    mappingDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        mappingDropZone.classList.remove('dragover');
+        uploadFiles(e.dataTransfer.files, 'mapping');
+    });
+    mappingFileInput.addEventListener('change', () => uploadFiles(mappingFileInput.files, 'mapping'));
+}
+
+async function uploadFiles(files, type) {
+    for (const file of files) {
+        await uploadFile(file, type);
+    }
+    await loadFiles();
+}
+
+async function uploadFile(file, type) {
+    const progressEl = document.getElementById(type === 'mapping' ? 'mapping-upload-status' : 'upload-progress');
+    const fillEl = document.getElementById('upload-fill');
+    const statusEl = document.getElementById('upload-status');
+
+    progressEl.style.display = 'block';
+    if (type !== 'mapping') {
+        fillEl.style.width = '0%';
+        statusEl.textContent = `Uploading ${file.name}...`;
+    } else {
+        progressEl.className = 'alert alert-info mt-2';
+        progressEl.textContent = `Uploading ${file.name}...`;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    let url;
+    if (type === 'mapping') {
+        url = `/api/clients/${clientCode}/files/upload-mapping`;
+    } else {
+        formData.append('target_folder', document.getElementById('target-folder').value);
+        formData.append('iteration', document.getElementById('iteration').value);
+        url = `/api/clients/${clientCode}/files/upload`;
+    }
+
+    try {
+        const response = await fetch(url, { method: 'POST', body: formData });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Upload failed');
+        }
+
+        const result = await response.json();
+
+        if (type !== 'mapping') {
+            fillEl.style.width = '100%';
+            statusEl.textContent = `Uploaded ${result.filename} (${formatSize(result.size)})`;
+        } else {
+            progressEl.className = 'alert alert-success mt-2';
+            progressEl.textContent = `Uploaded ${result.filename} (${formatSize(result.size)})`;
+        }
+    } catch (error) {
+        if (type !== 'mapping') {
+            statusEl.textContent = `Error: ${error.message}`;
+        } else {
+            progressEl.className = 'alert alert-danger mt-2';
+            progressEl.textContent = `Error: ${error.message}`;
+        }
+    }
+}
+
+function formatSize(bytes) {
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let i = 0;
+    while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
+    return `${bytes.toFixed(1)} ${units[i]}`;
+}
+
+function formatDate(timestamp) {
+    return new Date(timestamp * 1000).toLocaleString('zh-TW');
+}
+</script>
+{% endblock %}

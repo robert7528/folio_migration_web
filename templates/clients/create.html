@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Create New Project{% endblock %}
+
+{% block content %}
+<h1>Create New Migration Project</h1>
+
+<div class="card mt-2">
+    <form id="create-form">
+        <div class="grid grid-2">
+            <div class="form-group">
+                <label for="client_code">Client Code *</label>
+                <input type="text" id="client_code" name="client_code" required
+                       pattern="[a-z][a-z0-9_]*" minlength="2" maxlength="20"
+                       placeholder="e.g., thu, tpml, ntl">
+                <small>Lowercase letters, numbers, underscores. Used for directory name.</small>
+            </div>
+
+            <div class="form-group">
+                <label for="client_name">Client Name *</label>
+                <input type="text" id="client_name" name="client_name" required
+                       placeholder="e.g., East University Library">
+            </div>
+
+            <div class="form-group">
+                <label for="client_type">Client Type *</label>
+                <select id="client_type" name="client_type" required>
+                    <option value="">-- Select --</option>
+                    <option value="university">University</option>
+                    <option value="public">Public Library</option>
+                    <option value="special">Special Library</option>
+                    <option value="corporate">Corporate</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="pm_name">Project Manager *</label>
+                <input type="text" id="pm_name" name="pm_name" required
+                       placeholder="Your name">
+            </div>
+
+            <div class="form-group">
+                <label for="folio_url">FOLIO Gateway URL *</label>
+                <input type="url" id="folio_url" name="folio_url" required
+                       placeholder="https://folio.example.com">
+            </div>
+
+            <div class="form-group">
+                <label for="tenant_id">Tenant ID *</label>
+                <input type="text" id="tenant_id" name="tenant_id" required
+                       placeholder="e.g., fs00001234">
+            </div>
+
+            <div class="form-group">
+                <label for="start_date">Start Date</label>
+                <input type="date" id="start_date" name="start_date">
+                <small>Leave blank to use today's date</small>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary btn-lg" id="submit-btn">
+                Create Project
+            </button>
+            <a href="/clients" class="btn btn-secondary btn-lg">Cancel</a>
+        </div>
+
+        <div id="progress-container" style="display: none;" class="mt-2">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+            </div>
+            <p class="progress-status" id="progress-status">Initializing...</p>
+        </div>
+
+        <div id="error-message" class="alert alert-danger mt-2" style="display: none;"></div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('create-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const form = e.target;
+    const submitBtn = document.getElementById('submit-btn');
+    const progressContainer = document.getElementById('progress-container');
+    const progressFill = document.getElementById('progress-fill');
+    const progressStatus = document.getElementById('progress-status');
+    const errorMessage = document.getElementById('error-message');
+
+    // Collect form data
+    const data = {
+        client_code: form.client_code.value.toLowerCase().trim(),
+        client_name: form.client_name.value.trim(),
+        client_type: form.client_type.value,
+        folio_url: form.folio_url.value.trim(),
+        tenant_id: form.tenant_id.value.trim(),
+        pm_name: form.pm_name.value.trim(),
+        start_date: form.start_date.value || null
+    };
+
+    // Validate client_code
+    if (!/^[a-z][a-z0-9_]*$/.test(data.client_code)) {
+        errorMessage.textContent = 'Client code must start with a lowercase letter and contain only lowercase letters, numbers, and underscores';
+        errorMessage.style.display = 'block';
+        return;
+    }
+
+    // Show progress
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner"></span> Creating...';
+    progressContainer.style.display = 'block';
+    errorMessage.style.display = 'none';
+
+    try {
+        progressStatus.textContent = 'Creating project record...';
+        progressFill.style.width = '20%';
+
+        const response = await fetch('/api/clients', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to create project');
+        }
+
+        const result = await response.json();
+
+        progressStatus.textContent = 'Project created! Setting up environment...';
+        progressFill.style.width = '50%';
+
+        // Poll for status
+        await pollStatus(data.client_code, progressFill, progressStatus);
+
+        progressFill.style.width = '100%';
+        progressStatus.textContent = 'Project ready!';
+
+        // Redirect to project page
+        setTimeout(() => {
+            window.location.href = `/clients/${data.client_code}`;
+        }, 1000);
+
+    } catch (error) {
+        errorMessage.textContent = error.message;
+        errorMessage.style.display = 'block';
+        progressContainer.style.display = 'none';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create Project';
+    }
+});
+
+async function pollStatus(clientCode, progressFill, progressStatus) {
+    const maxAttempts = 60; // 5 minutes max
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Poll every 5 seconds
+        attempts++;
+
+        try {
+            const response = await fetch(`/api/clients/${clientCode}`);
+            const client = await response.json();
+
+            if (client.status === 'ready') {
+                return;
+            } else if (client.status === 'error') {
+                throw new Error(client.status_message || 'Project initialization failed');
+            }
+
+            // Update progress
+            const progress = 50 + Math.min(40, attempts * 2);
+            progressFill.style.width = progress + '%';
+            progressStatus.textContent = `Setting up environment (step ${Math.min(10, attempts)}/10)...`;
+
+        } catch (error) {
+            if (error.message.includes('initialization failed')) {
+                throw error;
+            }
+            // Continue polling on network errors
+        }
+    }
+
+    throw new Error('Project initialization timed out');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<h1>FOLIO Migration Dashboard</h1>
+
+<div class="grid grid-3 mt-2">
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Total Projects</span>
+        </div>
+        <div class="text-center">
+            <span id="total-projects" style="font-size: 2.5rem; font-weight: bold; color: var(--primary-color);">-</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Ready</span>
+        </div>
+        <div class="text-center">
+            <span id="ready-projects" style="font-size: 2.5rem; font-weight: bold; color: var(--success-color);">-</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Initializing</span>
+        </div>
+        <div class="text-center">
+            <span id="initializing-projects" style="font-size: 2.5rem; font-weight: bold; color: var(--warning-color);">-</span>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-2">
+    <div class="card-header">
+        <span class="card-title">Recent Projects</span>
+        <a href="/clients/new" class="btn btn-primary">New Project</a>
+    </div>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Client Code</th>
+                    <th>Name</th>
+                    <th>PM</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="projects-table">
+                <tr>
+                    <td colspan="6" class="text-center text-muted">Loading...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const response = await fetch('/api/clients');
+        const clients = await response.json();
+
+        // Update stats
+        document.getElementById('total-projects').textContent = clients.length;
+        document.getElementById('ready-projects').textContent = clients.filter(c => c.status === 'ready').length;
+        document.getElementById('initializing-projects').textContent = clients.filter(c => c.status === 'initializing').length;
+
+        // Update table
+        const tbody = document.getElementById('projects-table');
+        if (clients.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No projects yet. <a href="/clients/new">Create one</a></td></tr>';
+        } else {
+            tbody.innerHTML = clients.slice(0, 10).map(client => `
+                <tr>
+                    <td><a href="/clients/${client.client_code}">${client.client_code}</a></td>
+                    <td>${client.client_name}</td>
+                    <td>${client.pm_name}</td>
+                    <td><span class="badge badge-${getStatusClass(client.status)}">${client.status}</span></td>
+                    <td>${formatDate(client.created_at)}</td>
+                    <td>
+                        <a href="/clients/${client.client_code}" class="btn btn-sm btn-secondary">View</a>
+                    </td>
+                </tr>
+            `).join('');
+        }
+    } catch (error) {
+        console.error('Error loading clients:', error);
+    }
+});
+
+function getStatusClass(status) {
+    switch (status) {
+        case 'ready': return 'success';
+        case 'initializing': return 'warning';
+        case 'error': return 'danger';
+        default: return 'info';
+    }
+}
+
+function formatDate(dateStr) {
+    return new Date(dateStr).toLocaleDateString('zh-TW');
+}
+</script>
+{% endblock %}

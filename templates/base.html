@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}FOLIO Migration{% endblock %} - FOLIO Migration Web</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar">
+        <a href="/" class="logo">FOLIO Migration</a>
+        <ul>
+            <li><a href="/">Dashboard</a></li>
+            <li><a href="/clients">Projects</a></li>
+            <li><a href="/clients/new">New Project</a></li>
+        </ul>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer>
+        <p>FOLIO Migration Web Portal v0.1.0</p>
+    </footer>
+
+    <script src="/static/js/main.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

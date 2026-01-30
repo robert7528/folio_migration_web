@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Client Projects{% endblock %}
+
+{% block content %}
+<div class="flex-between mb-2">
+    <h1>Client Projects</h1>
+    <a href="/clients/new" class="btn btn-primary">New Project</a>
+</div>
+
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Client Code</th>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>PM</th>
+                    <th>Status</th>
+                    <th>Credentials</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="clients-table">
+                <tr>
+                    <td colspan="8" class="text-center text-muted">Loading...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadClients();
+});
+
+async function loadClients() {
+    try {
+        const response = await fetch('/api/clients');
+        const clients = await response.json();
+
+        const tbody = document.getElementById('clients-table');
+        if (clients.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No projects yet</td></tr>';
+        } else {
+            tbody.innerHTML = clients.map(client => `
+                <tr>
+                    <td><a href="/clients/${client.client_code}">${client.client_code}</a></td>
+                    <td>${client.client_name}</td>
+                    <td>${client.client_type}</td>
+                    <td>${client.pm_name}</td>
+                    <td><span class="badge badge-${getStatusClass(client.status)}">${client.status}</span></td>
+                    <td>${client.credentials_set ? '<span class="badge badge-success">Set</span>' : '<span class="badge badge-warning">Not Set</span>'}</td>
+                    <td>${formatDate(client.created_at)}</td>
+                    <td class="flex gap-1">
+                        <a href="/clients/${client.client_code}" class="btn btn-sm btn-secondary">View</a>
+                        <button onclick="deleteClient('${client.client_code}')" class="btn btn-sm btn-danger">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+    } catch (error) {
+        console.error('Error loading clients:', error);
+    }
+}
+
+async function deleteClient(clientCode) {
+    if (!confirm(`Are you sure you want to delete project "${clientCode}"? This will remove all files.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/clients/${clientCode}`, { method: 'DELETE' });
+        if (response.ok) {
+            await loadClients();
+        } else {
+            alert('Failed to delete project');
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+function getStatusClass(status) {
+    switch (status) {
+        case 'ready': return 'success';
+        case 'initializing': return 'warning';
+        case 'error': return 'danger';
+        default: return 'info';
+    }
+}
+
+function formatDate(dateStr) {
+    return new Date(dateStr).toLocaleDateString('zh-TW');
+}
+</script>
+{% endblock %}

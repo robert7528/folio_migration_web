@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Edit: {{ filename }}{% endblock %}
+
+{% block content %}
+<div class="flex-between mb-2">
+    <h1>Edit Configuration: {{ filename }}</h1>
+    <a href="/clients/{{ client_code }}" class="btn btn-secondary">Back to Project</a>
+</div>
+
+<div class="card">
+    <div class="editor-toolbar">
+        <button class="btn btn-secondary" onclick="formatJson()">Format JSON</button>
+        <button class="btn btn-secondary" onclick="validateConfig()">Validate</button>
+        <button class="btn btn-primary" onclick="saveConfig()">Save</button>
+    </div>
+
+    <div class="editor-container">
+        <textarea id="json-editor" spellcheck="false"></textarea>
+    </div>
+</div>
+
+<div id="validation-results" style="display: none;"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const clientCode = '{{ client_code }}';
+const filename = '{{ filename }}';
+let originalContent = null;
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadConfig();
+});
+
+async function loadConfig() {
+    try {
+        const response = await fetch(`/api/clients/${clientCode}/config/${filename}`);
+        if (!response.ok) {
+            throw new Error('Failed to load configuration');
+        }
+
+        const data = await response.json();
+        originalContent = data.content;
+
+        const editor = document.getElementById('json-editor');
+        editor.value = JSON.stringify(data.content, null, 4);
+
+    } catch (error) {
+        showResult(false, error.message);
+    }
+}
+
+function formatJson() {
+    const editor = document.getElementById('json-editor');
+    try {
+        const parsed = JSON.parse(editor.value);
+        editor.value = JSON.stringify(parsed, null, 4);
+        showResult(true, 'JSON formatted successfully');
+    } catch (error) {
+        showResult(false, `Invalid JSON: ${error.message}`);
+    }
+}
+
+async function validateConfig() {
+    const editor = document.getElementById('json-editor');
+
+    try {
+        const content = JSON.parse(editor.value);
+
+        const response = await fetch(`/api/clients/${clientCode}/config/validate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(content)
+        });
+
+        const result = await response.json();
+
+        if (result.valid) {
+            showResult(true, 'Configuration is valid');
+        } else {
+            const errors = result.errors.map(e => `${e.loc.join('.')}: ${e.msg}`).join('\n');
+            showResult(false, `Validation errors:\n${errors}`);
+        }
+    } catch (error) {
+        showResult(false, `Invalid JSON: ${error.message}`);
+    }
+}
+
+async function saveConfig() {
+    const editor = document.getElementById('json-editor');
+
+    try {
+        const content = JSON.parse(editor.value);
+
+        const response = await fetch(`/api/clients/${clientCode}/config/${filename}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(content)
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            if (error.detail && error.detail.errors) {
+                const errors = error.detail.errors.map(e => `${e.loc.join('.')}: ${e.msg}`).join('\n');
+                throw new Error(`Validation failed:\n${errors}`);
+            }
+            throw new Error(error.detail || 'Failed to save');
+        }
+
+        showResult(true, 'Configuration saved successfully');
+        originalContent = content;
+
+    } catch (error) {
+        showResult(false, error.message);
+    }
+}
+
+function showResult(success, message) {
+    const el = document.getElementById('validation-results');
+    el.className = `validation-results ${success ? 'valid' : 'invalid'}`;
+    el.style.display = 'block';
+    el.style.whiteSpace = 'pre-wrap';
+    el.textContent = message;
+}
+
+// Warn before leaving with unsaved changes
+window.addEventListener('beforeunload', (e) => {
+    const editor = document.getElementById('json-editor');
+    try {
+        const current = JSON.parse(editor.value);
+        if (JSON.stringify(current) !== JSON.stringify(originalContent)) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    } catch {
+        // Invalid JSON, warn anyway
+        e.preventDefault();
+        e.returnValue = '';
+    }
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey) {
+        switch (e.key) {
+            case 's':
+                e.preventDefault();
+                saveConfig();
+                break;
+            case 'f':
+                if (e.shiftKey) {
+                    e.preventDefault();
+                    formatJson();
+                }
+                break;
+        }
+    }
+});
+</script>
+{% endblock %}
