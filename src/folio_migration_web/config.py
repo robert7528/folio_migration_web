@@ -39,7 +39,7 @@ class Settings(BaseSettings):
 
     # File upload
     max_upload_size_mb: int = 500
-    allowed_extensions: str = ".mrc,.marc,.json,.csv,.tsv,.txt,.xml"
+    allowed_extensions: str = ".mrc,.marc,.iso,.json,.csv,.tsv,.txt,.xml"
 
     @property
     def max_upload_size_bytes(self) -> int:
