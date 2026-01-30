@@ -6,7 +6,54 @@
 <div class="flex-between mb-2">
     <h1 id="page-title">Project: {{ client_code }}</h1>
     <div class="flex gap-1">
+        <button class="btn btn-primary" onclick="showEditModal()">Edit Project</button>
         <a href="{{ root_path }}/clients" class="btn btn-secondary">Back to List</a>
+    </div>
+</div>
+
+<!-- Edit Modal -->
+<div id="edit-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Edit Project</h2>
+            <button class="modal-close" onclick="hideEditModal()">&times;</button>
+        </div>
+        <form id="edit-form">
+            <div class="form-group">
+                <label for="edit-client_name">Client Name</label>
+                <input type="text" id="edit-client_name" name="client_name" required>
+            </div>
+            <div class="form-group">
+                <label for="edit-client_type">Client Type</label>
+                <select id="edit-client_type" name="client_type">
+                    <option value="university">University</option>
+                    <option value="public">Public Library</option>
+                    <option value="special">Special Library</option>
+                    <option value="corporate">Corporate</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="edit-folio_url">FOLIO Gateway URL</label>
+                <input type="url" id="edit-folio_url" name="folio_url" required>
+            </div>
+            <div class="form-group">
+                <label for="edit-tenant_id">Tenant ID</label>
+                <input type="text" id="edit-tenant_id" name="tenant_id" required>
+            </div>
+            <div class="form-group">
+                <label for="edit-pm_name">Project Manager</label>
+                <input type="text" id="edit-pm_name" name="pm_name" required>
+            </div>
+            <div class="form-group">
+                <label for="edit-start_date">Start Date</label>
+                <input type="date" id="edit-start_date" name="start_date">
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <button type="button" class="btn btn-secondary" onclick="hideEditModal()">Cancel</button>
+            </div>
+            <div id="edit-result" class="mt-2" style="display: none;"></div>
+        </form>
     </div>
 </div>
 
@@ -396,5 +443,74 @@ function formatSize(bytes) {
     }
     return `${bytes.toFixed(1)} ${units[i]}`;
 }
+
+// Edit Modal
+function showEditModal() {
+    if (!clientData) return;
+
+    document.getElementById('edit-client_name').value = clientData.client_name;
+    document.getElementById('edit-client_type').value = clientData.client_type;
+    document.getElementById('edit-folio_url').value = clientData.folio_url;
+    document.getElementById('edit-tenant_id').value = clientData.tenant_id;
+    document.getElementById('edit-pm_name').value = clientData.pm_name;
+    document.getElementById('edit-start_date').value = clientData.start_date || '';
+    document.getElementById('edit-result').style.display = 'none';
+
+    document.getElementById('edit-modal').style.display = 'flex';
+}
+
+function hideEditModal() {
+    document.getElementById('edit-modal').style.display = 'none';
+}
+
+document.getElementById('edit-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const data = {
+        client_name: document.getElementById('edit-client_name').value,
+        client_type: document.getElementById('edit-client_type').value,
+        folio_url: document.getElementById('edit-folio_url').value,
+        tenant_id: document.getElementById('edit-tenant_id').value,
+        pm_name: document.getElementById('edit-pm_name').value,
+        start_date: document.getElementById('edit-start_date').value || null
+    };
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Update failed');
+        }
+
+        const result = document.getElementById('edit-result');
+        result.className = 'alert alert-success mt-2';
+        result.textContent = 'Project updated successfully';
+        result.style.display = 'block';
+
+        // Reload data and close modal after a short delay
+        setTimeout(async () => {
+            hideEditModal();
+            await loadClient();
+        }, 1000);
+
+    } catch (error) {
+        const result = document.getElementById('edit-result');
+        result.className = 'alert alert-danger mt-2';
+        result.textContent = error.message;
+        result.style.display = 'block';
+    }
+});
+
+// Close modal when clicking outside
+document.getElementById('edit-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'edit-modal') {
+        hideEditModal();
+    }
+});
 </script>
 {% endblock %}

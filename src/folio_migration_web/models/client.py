@@ -118,6 +118,29 @@ class ClientListItem(BaseModel):
         from_attributes = True
 
 
+class ClientUpdate(BaseModel):
+    """Input model for updating a client project."""
+
+    client_name: Optional[str] = Field(None, min_length=1, max_length=200)
+    client_type: Optional[ClientType] = None
+    folio_url: Optional[str] = None
+    tenant_id: Optional[str] = Field(None, min_length=1, max_length=100)
+    pm_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    start_date: Optional[date] = None
+    notes: Optional[str] = None
+
+    @field_validator("folio_url")
+    @classmethod
+    def validate_folio_url(cls, v: Optional[str]) -> Optional[str]:
+        """Validate and normalize FOLIO URL."""
+        if v is None:
+            return v
+        v = v.strip().rstrip("/")
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("FOLIO URL must start with http:// or https://")
+        return v
+
+
 class ClientCredentials(BaseModel):
     """FOLIO credentials model."""
 

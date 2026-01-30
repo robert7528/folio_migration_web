@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..db.database import get_db
 from ..db.models import Client as ClientModel
-from ..models.client import ClientCreate, ClientResponse, ClientListItem
+from ..models.client import ClientCreate, ClientUpdate, ClientResponse, ClientListItem
 from ..services.project_service import get_project_service, ProjectService
 from ..services.folder_service import get_iteration_folders, get_source_data_folders
 
@@ -121,6 +121,29 @@ async def _create_project_async(client: ClientCreate, client_code: str):
             db.commit()
     finally:
         db.close()
+
+
+@router.put("/{client_code}", response_model=ClientResponse)
+async def update_client(
+    client_code: str,
+    client_update: ClientUpdate,
+    db: Session = Depends(get_db),
+):
+    """Update a client project's information."""
+    client = db.query(ClientModel).filter(ClientModel.client_code == client_code).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client '{client_code}' not found")
+
+    # Update only provided fields
+    update_data = client_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if value is not None:
+            setattr(client, field, value if field != "client_type" else value.value)
+
+    db.commit()
+    db.refresh(client)
+
+    return client
 
 
 @router.delete("/{client_code}")
