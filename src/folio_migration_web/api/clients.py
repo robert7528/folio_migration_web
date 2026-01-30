@@ -12,6 +12,7 @@ from ..db.models import Client as ClientModel
 from ..models.client import ClientCreate, ClientUpdate, ClientResponse, ClientListItem
 from ..services.project_service import get_project_service, ProjectService
 from ..services.folder_service import get_iteration_folders, get_source_data_folders
+from ..services.config_service import get_config_service
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 settings = get_settings()
@@ -128,6 +129,7 @@ async def update_client(
     client_code: str,
     client_update: ClientUpdate,
     db: Session = Depends(get_db),
+    project_service: ProjectService = Depends(get_project_service),
 ):
     """Update a client project's information."""
     client = db.query(ClientModel).filter(ClientModel.client_code == client_code).first()
@@ -142,6 +144,16 @@ async def update_client(
 
     db.commit()
     db.refresh(client)
+
+    # Sync configuration files if relevant fields changed
+    client_path = project_service.get_client_path(client_code)
+    if client_path.exists():
+        config_service = get_config_service(client_path)
+        config_service.update_library_config(
+            client_name=client.client_name,
+            tenant_id=client.tenant_id,
+            folio_url=client.folio_url,
+        )
 
     return client
 

@@ -14,6 +14,7 @@ from typing import Optional
 from ..config import get_settings
 from ..models.client import ClientCreate
 from .folder_service import create_iteration_folders
+from .config_service import get_config_service
 
 settings = get_settings()
 
@@ -265,7 +266,35 @@ PASSWORD=
         info_path.write_text(content, encoding="utf-8")
 
     def _create_config(self, client_path: Path, client: ClientCreate):
-        """Create marc_config.json configuration file."""
+        """Create all configuration files using ConfigService."""
+        config_service = get_config_service(client_path)
+        iteration_id = f"{client.client_code}_migration"
+
+        # Generate library config (shared settings)
+        config_service.generate_library_config(
+            client_name=client.client_name,
+            tenant_id=client.tenant_id,
+            folio_url=client.folio_url,
+            iteration_id=iteration_id,
+        )
+
+        # Generate all task configs
+        config_service.generate_all_task_configs()
+
+        # Generate mapping file templates
+        config_service.generate_mapping_templates()
+
+        # Enable bibs task by default
+        config_service.enable_task("bibs", True)
+
+        # Generate combined config for CLI
+        config_service.generate_combined_config()
+
+        # Also create the legacy marc_config.json for backward compatibility
+        self._create_legacy_marc_config(client_path, client)
+
+    def _create_legacy_marc_config(self, client_path: Path, client: ClientCreate):
+        """Create legacy marc_config.json for backward compatibility."""
         config = {
             "libraryInformation": {
                 "tenantId": client.tenant_id,
@@ -285,7 +314,7 @@ PASSWORD=
                     "migrationTaskType": "BibsTransformer",
                     "ilsFlavour": "tag001",
                     "tags_to_delete": [],
-                    "files": [{"file_name": "marc_bibs.mrc", "discovery_suppressed": False}],
+                    "files": [{"file_name": "bibs.mrc", "discovery_suppressed": False}],
                     "updateHridSettings": False,
                 },
                 {

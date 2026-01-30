@@ -8,12 +8,24 @@ from typing import List
 ITERATION_FOLDERS = [
     "results",
     "reports",
+    # Bibliographic data
     "source_data/instances",
+    "source_data/authorities",
+    # Inventory data
     "source_data/holdings",
     "source_data/items",
+    # Circulation data
     "source_data/users",
     "source_data/loans",
+    "source_data/requests",
+    # Courses
     "source_data/courses",
+    "source_data/reserves",
+    # Acquisitions
+    "source_data/organizations",
+    "source_data/orders",
+    # Fees/Fines
+    "source_data/feefines",
 ]
 
 
