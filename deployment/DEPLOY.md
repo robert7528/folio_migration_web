@@ -25,7 +25,7 @@ source ~/.bashrc
 
 ```bash
 # Create folio user
-sudo useradd -r -m -d /opt/folio_migration_web -s /bin/bash folio
+sudo useradd -r -m -d /WWW/folio_migration_web -s /bin/bash folio
 
 # Switch to folio user
 sudo -u folio -i
@@ -35,7 +35,7 @@ sudo -u folio -i
 
 ```bash
 # Clone repository (as folio user)
-cd /opt/folio_migration_web
+cd /WWW/folio_migration_web
 git clone https://github.com/FOLIO-FSE/folio_migration_web.git .
 
 # Create virtual environment
@@ -61,7 +61,7 @@ nano .env
 ```
 APP_ENV=production
 DEBUG=false
-CLIENTS_DIR=/opt/folio_migration_web/clients
+CLIENTS_DIR=/WWW/folio_migration_web/clients
 DATABASE_URL=sqlite:///./data/migration.db
 ```
 
@@ -79,7 +79,7 @@ python -c "from folio_migration_web.db.database import init_db; init_db()"
 exit
 
 # Copy service file
-sudo cp /opt/folio_migration_web/deployment/folio-migration-web.service /etc/systemd/system/
+sudo cp /WWW/folio_migration_web/deployment/folio-migration-web.service /etc/systemd/system/
 
 # Reload systemd
 sudo systemctl daemon-reload
@@ -96,8 +96,8 @@ sudo systemctl status folio-migration-web
 
 ```bash
 # Copy nginx configuration
-sudo cp /opt/folio_migration_web/deployment/nginx.conf /etc/nginx/sites-available/folio-migration
-sudo cp /opt/folio_migration_web/deployment/nginx-common.conf /etc/nginx/snippets/folio-migration-common.conf
+sudo cp /WWW/folio_migration_web/deployment/nginx.conf /etc/nginx/sites-available/folio-migration
+sudo cp /WWW/folio_migration_web/deployment/nginx-common.conf /etc/nginx/snippets/folio-migration-common.conf
 
 # Create sites-enabled directory if not exists
 sudo mkdir -p /etc/nginx/sites-enabled
@@ -154,7 +154,7 @@ sudo systemctl stop folio-migration-web
 
 # Update code
 sudo -u folio -i
-cd /opt/folio_migration_web
+cd /WWW/folio_migration_web
 git pull
 
 # Update dependencies
@@ -174,7 +174,7 @@ sudo systemctl start folio-migration-web
 sudo journalctl -u folio-migration-web -n 50
 
 # Check permissions
-ls -la /opt/folio_migration_web/
+ls -la /WWW/folio_migration_web/
 ```
 
 ### 502 Bad Gateway
@@ -192,7 +192,7 @@ ss -tlnp | grep 8000
 sudo nginx -T | grep client_max_body_size
 
 # Check disk space
-df -h /opt/folio_migration_web/
+df -h /WWW/folio_migration_web/
 ```
 
 ## Security Notes
@@ -200,12 +200,12 @@ df -h /opt/folio_migration_web/
 1. **Production SSL**: Enable HTTPS in nginx configuration
 2. **Firewall**: Only allow necessary ports
 3. **Updates**: Keep system and Python packages updated
-4. **Backups**: Regular backup of `/opt/folio_migration_web/data/` and `/opt/folio_migration_web/clients/`
+4. **Backups**: Regular backup of `/WWW/folio_migration_web/data/` and `/WWW/folio_migration_web/clients/`
 
 ## Directory Structure
 
 ```
-/opt/folio_migration_web/
+/WWW/folio_migration_web/
 ├── .env                    # Configuration
 ├── .venv/                  # Python virtual environment
 ├── data/

@@ -7,15 +7,15 @@ Wants=network-online.target
 Type=exec
 User=folio
 Group=folio
-WorkingDirectory=/opt/folio_migration_web
+WorkingDirectory=/WWW/folio_migration_web
 
 # Environment
-Environment="PATH=/opt/folio_migration_web/.venv/bin:/usr/local/bin:/usr/bin"
+Environment="PATH=/WWW/folio_migration_web/.venv/bin:/usr/local/bin:/usr/bin"
 Environment="PYTHONUNBUFFERED=1"
-EnvironmentFile=-/opt/folio_migration_web/.env
+EnvironmentFile=-/WWW/folio_migration_web/.env
 
 # Start command
-ExecStart=/opt/folio_migration_web/.venv/bin/uvicorn \
+ExecStart=/WWW/folio_migration_web/.venv/bin/uvicorn \
     folio_migration_web.main:app \
     --host 127.0.0.1 \
     --port 8000 \
@@ -33,7 +33,7 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/opt/folio_migration_web
+ReadWritePaths=/WWW/folio_migration_web
 
 # Resource limits
 LimitNOFILE=65536
