@@ -176,14 +176,9 @@ class ProjectService:
 
     def _install_tools(self, client_path: Path) -> Optional[str]:
         """Install folio_migration_tools and return version."""
-        # Determine pip path based on OS
-        if sys.platform == "win32":
-            pip_path = client_path / ".venv" / "Scripts" / "pip"
-        else:
-            pip_path = client_path / ".venv" / "bin" / "pip"
-
+        # Use uv pip to install into the venv
         subprocess.run(
-            [str(pip_path), "install", "folio_migration_tools"],
+            ["uv", "pip", "install", "folio_migration_tools", "--python", str(client_path / ".venv")],
             cwd=client_path,
             check=True,
             capture_output=True,
