@@ -4,218 +4,164 @@
 
 - Rocky Linux 8/9 or similar RHEL-based distribution
 - Python 3.10+ (3.13 recommended)
-- Nginx
+- Nginx (已安裝)
 - Git
 - uv (Python package manager)
 
 ## Installation Steps
 
-### 1. Install System Dependencies
+### 1. 安裝 uv（如果還沒安裝）
 
 ```bash
-# Install Python and development tools
-sudo dnf install -y python3.13 python3.13-devel git nginx
-
-# Install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source ~/.bashrc
 ```
 
-### 2. Create Application User
+### 2. 建立目錄並 Clone
 
 ```bash
-# Create folio user
-sudo useradd -r -m -d /folio/folio_migration_web -s /bin/bash folio
+# 建立目錄
+sudo mkdir -p /folio/folio_migration_web
+sudo chown $USER:$USER /folio/folio_migration_web
 
-# Switch to folio user
-sudo -u folio -i
+# Clone
+cd /folio/folio_migration_web
+git clone https://github.com/robert7528/folio_migration_web.git .
 ```
 
-### 3. Clone and Setup Application
+### 3. 建立虛擬環境並安裝
 
 ```bash
-# Clone repository (as folio user)
-cd /folio/folio_migration_web
-git clone https://github.com/FOLIO-FSE/folio_migration_web.git .
-
-# Create virtual environment
+# 建立虛擬環境
 uv venv .venv --python 3.13
 
-# Activate and install
+# 啟動並安裝
 source .venv/bin/activate
 uv pip install -e .
 
-# Create data directories
-mkdir -p data clients logs
+# 建立資料目錄
+mkdir -p data clients
 ```
 
-### 4. Configure Application
+### 4. 設定環境變數
 
 ```bash
-# Copy and edit configuration
 cp .env.example .env
 nano .env
 ```
 
-**Important settings to configure in `.env`:**
+確認以下設定：
 ```
 APP_ENV=production
 DEBUG=false
-CLIENTS_DIR=/folio/folio_migration_web/clients
-DATABASE_URL=sqlite:///./data/migration.db
 ```
 
-### 5. Initialize Database
+### 5. 安裝 Systemd 服務
 
 ```bash
-# Run the application once to create tables
-python -c "from folio_migration_web.db.database import init_db; init_db()"
-```
-
-### 6. Setup Systemd Service
-
-```bash
-# Exit folio user
-exit
-
-# Copy service file
-sudo cp /folio/folio_migration_web/deployment/folio-migration-web.service /etc/systemd/system/
-
-# Reload systemd
+sudo cp deployment/folio-migration-web.service /etc/systemd/system/
 sudo systemctl daemon-reload
-
-# Enable and start service
 sudo systemctl enable folio-migration-web
 sudo systemctl start folio-migration-web
 
-# Check status
+# 檢查狀態
 sudo systemctl status folio-migration-web
 ```
 
-### 7. Configure Nginx
+### 6. 設定 Nginx（不影響現有設定）
+
+複製設定檔到 conf.d（使用獨立檔名）：
 
 ```bash
-# Copy nginx configuration
-sudo cp /folio/folio_migration_web/deployment/nginx.conf /etc/nginx/sites-available/folio-migration
-sudo cp /folio/folio_migration_web/deployment/nginx-common.conf /etc/nginx/snippets/folio-migration-common.conf
+sudo cp deployment/nginx-folio-migration.conf /etc/nginx/conf.d/folio-migration.conf
+```
 
-# Create sites-enabled directory if not exists
-sudo mkdir -p /etc/nginx/sites-enabled
+編輯設定檔，修改 port 和 server_name：
 
-# Enable site
-sudo ln -s /etc/nginx/sites-available/folio-migration /etc/nginx/sites-enabled/
+```bash
+sudo nano /etc/nginx/conf.d/folio-migration.conf
+```
 
-# Edit server_name in nginx config
-sudo nano /etc/nginx/sites-available/folio-migration
-# Change: server_name migration.example.com;
-# To: server_name your-actual-domain.com;
+重點修改：
+- `listen 8080;` → 改成您要的 port（如 80 沒被佔用可改成 80）
+- `server_name _;` → 改成您的域名或 IP
 
-# Include sites-enabled in nginx.conf if not already
-sudo nano /etc/nginx/nginx.conf
-# Add in http block: include /etc/nginx/sites-enabled/*;
+測試並重載：
 
-# Test nginx configuration
+```bash
 sudo nginx -t
-
-# Reload nginx
 sudo systemctl reload nginx
 ```
 
-### 8. Configure Firewall
+### 7. 開放防火牆（如需要）
 
 ```bash
-# Allow HTTP/HTTPS
-sudo firewall-cmd --permanent --add-service=http
-sudo firewall-cmd --permanent --add-service=https
+# 如果使用 8080 port
+sudo firewall-cmd --permanent --add-port=8080/tcp
 sudo firewall-cmd --reload
 ```
 
-## Verify Installation
+## 驗證安裝
 
 ```bash
-# Check service status
+# 檢查服務狀態
 sudo systemctl status folio-migration-web
 
-# Check logs
+# 檢查 log
 sudo journalctl -u folio-migration-web -f
 
-# Test locally
-curl http://localhost:8000/api/clients
+# 測試 API（直接連 uvicorn）
+curl http://localhost:8000/api/health
 
-# Test via nginx
-curl http://your-domain.com/
+# 測試 Nginx（假設用 8080）
+curl http://localhost:8080/api/health
 ```
 
-## Updating
+## 更新程式
 
 ```bash
-# Stop service
-sudo systemctl stop folio-migration-web
-
-# Update code
-sudo -u folio -i
 cd /folio/folio_migration_web
 git pull
-
-# Update dependencies
 source .venv/bin/activate
 uv pip install -e .
-exit
-
-# Restart service
-sudo systemctl start folio-migration-web
+sudo systemctl restart folio-migration-web
 ```
 
-## Troubleshooting
+## 目錄結構
 
-### Service won't start
+```
+/folio/folio_migration_web/
+├── .env                    # 環境設定
+├── .venv/                  # Python 虛擬環境
+├── data/
+│   └── migration.db        # SQLite 資料庫
+├── clients/                # 客戶專案目錄
+│   ├── thu/
+│   ├── tpml/
+│   └── ...
+├── static/                 # 靜態檔案 (CSS, JS)
+├── templates/              # HTML 模板
+└── src/                    # 程式原始碼
+```
+
+## 疑難排解
+
+### 服務無法啟動
 ```bash
-# Check logs
 sudo journalctl -u folio-migration-web -n 50
-
-# Check permissions
-ls -la /folio/folio_migration_web/
 ```
 
 ### 502 Bad Gateway
 ```bash
-# Check if application is running
-sudo systemctl status folio-migration-web
-
-# Check if port is listening
+# 確認 uvicorn 有在跑
 ss -tlnp | grep 8000
 ```
 
-### File upload fails
+### 檔案上傳失敗
 ```bash
-# Check nginx client_max_body_size
+# 檢查 nginx client_max_body_size
 sudo nginx -T | grep client_max_body_size
 
-# Check disk space
-df -h /folio/folio_migration_web/
-```
-
-## Security Notes
-
-1. **Production SSL**: Enable HTTPS in nginx configuration
-2. **Firewall**: Only allow necessary ports
-3. **Updates**: Keep system and Python packages updated
-4. **Backups**: Regular backup of `/folio/folio_migration_web/data/` and `/folio/folio_migration_web/clients/`
-
-## Directory Structure
-
-```
-/folio/folio_migration_web/
-├── .env                    # Configuration
-├── .venv/                  # Python virtual environment
-├── data/
-│   └── migration.db        # SQLite database
-├── clients/                # Client project directories
-│   ├── thu/
-│   ├── tpml/
-│   └── ...
-├── logs/                   # Application logs
-├── static/                 # Static files (CSS, JS)
-├── templates/              # HTML templates
-└── src/                    # Application source code
+# 檢查磁碟空間
+df -h /folio/
 ```
