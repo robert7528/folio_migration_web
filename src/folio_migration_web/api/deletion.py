@@ -155,7 +155,7 @@ async def run_deletion(
         )
 
         # Get client path
-        client_path = Path(settings.clients_base_path) / client_code
+        client_path = settings.clients_dir / client_code
 
         # Run deletion
         service = get_deletion_service(client_path, db)
@@ -239,7 +239,7 @@ async def preview_deletion(
         )
 
     # Get client path
-    client_path = Path(settings.clients_base_path) / client_code
+    client_path = settings.clients_dir / client_code
 
     # Preview deletion
     service = get_deletion_service(client_path, db)
