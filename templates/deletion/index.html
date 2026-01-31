@@ -1,0 +1,516 @@
+{% extends "base.html" %}
+
+{% block title %}Batch Deletion - {{ client_code }}{% endblock %}
+
+{% block content %}
+<div class="flex-between mb-2">
+    <h1>Batch Deletion</h1>
+    <a href="{{ root_path }}/clients/{{ client_code }}" class="btn btn-secondary">Back to Project</a>
+</div>
+
+<!-- Warning -->
+<div class="alert alert-danger mb-2">
+    <strong>Warning:</strong> This operation will permanently delete records from the FOLIO platform.
+    This action cannot be undone. Please make sure you have a backup or are working in a test environment.
+</div>
+
+<!-- Start Deletion -->
+<div class="card mb-2">
+    <div class="card-header">
+        <span class="card-title">Delete Imported Records</span>
+    </div>
+    <div class="p-2">
+        <div class="form-group">
+            <label for="execution-select">Select Completed Execution</label>
+            <select id="execution-select" class="form-control" onchange="previewDeletion()">
+                <option value="">Loading executions...</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="cascade-check" checked>
+                Cascade delete (delete dependent records: Items, Holdings)
+            </label>
+            <small class="text-muted d-block">
+                When enabled, deleting Instances will also delete associated Holdings and Items.
+            </small>
+        </div>
+
+        <!-- Preview Section -->
+        <div id="preview-section" class="mb-2" style="display: none;">
+            <div class="card" style="background: var(--bg-secondary);">
+                <div class="card-header">
+                    <span class="card-title">Deletion Preview</span>
+                </div>
+                <div class="p-2">
+                    <div class="grid grid-3 mb-1">
+                        <div class="stat-box">
+                            <span class="stat-value" id="preview-count">0</span>
+                            <span class="stat-label">Records to Delete</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value" id="preview-type">-</span>
+                            <span class="stat-label">Record Type</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-value" id="preview-task">-</span>
+                            <span class="stat-label">Task Name</span>
+                        </div>
+                    </div>
+                    <p class="text-muted"><strong>Sample IDs:</strong> <code id="preview-sample">-</code></p>
+                </div>
+            </div>
+        </div>
+
+        <button id="start-btn" class="btn btn-danger" onclick="confirmDeletion()" disabled>
+            Start Deletion
+        </button>
+    </div>
+</div>
+
+<!-- Deletion Progress -->
+<div id="deletion-progress" class="card mb-2" style="display: none;">
+    <div class="card-header">
+        <span class="card-title">Deletion in Progress</span>
+    </div>
+    <div class="p-2">
+        <div class="progress-bar mb-1">
+            <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+        </div>
+        <p id="progress-status" class="text-muted">Starting...</p>
+        <div id="progress-stats" class="grid grid-4 mt-2" style="display: none;">
+            <div class="stat-box">
+                <span class="stat-value text-success" id="stat-deleted">0</span>
+                <span class="stat-label">Deleted</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-value text-danger" id="stat-failed">0</span>
+                <span class="stat-label">Failed</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-value text-warning" id="stat-skipped">0</span>
+                <span class="stat-label">Skipped</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-value text-muted" id="stat-total">0</span>
+                <span class="stat-label">Total</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Deletion History -->
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Deletion History</span>
+        <button class="btn btn-sm btn-secondary" onclick="loadDeletions()">Refresh</button>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Deletion ID</th>
+                    <th>Execution</th>
+                    <th>Record Type</th>
+                    <th>Status</th>
+                    <th>Results (Deleted/Failed/Skipped)</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="deletions-table">
+                <tr>
+                    <td colspan="7" class="text-center text-muted">Loading...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Confirmation Modal -->
+<div id="confirm-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Confirm Deletion</h3>
+            <button class="btn btn-sm btn-secondary" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p class="text-danger"><strong>Are you sure you want to delete these records from FOLIO?</strong></p>
+            <p>This will permanently delete <strong id="confirm-count">0</strong> <strong id="confirm-type">records</strong> from the FOLIO platform.</p>
+            <p class="text-warning">This action cannot be undone!</p>
+            <div class="flex gap-1 mt-2">
+                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-danger" onclick="startDeletion()">Yes, Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const clientCode = '{{ client_code }}';
+let currentDeletionId = null;
+let pollInterval = null;
+let previewData = null;
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadExecutions();
+    await loadDeletions();
+});
+
+async function loadExecutions() {
+    const select = document.getElementById('execution-select');
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/executions?status=completed&limit=50`);
+        const data = await response.json();
+
+        if (data.executions.length === 0) {
+            select.innerHTML = '<option value="">No completed executions available</option>';
+            return;
+        }
+
+        select.innerHTML = '<option value="">Select an execution to delete...</option>' +
+            data.executions.map(exec => `
+                <option value="${exec.id}">
+                    #${exec.id} - ${exec.task_name} (${exec.task_type}) - ${new Date(exec.completed_at).toLocaleString('zh-TW')}
+                </option>
+            `).join('');
+
+    } catch (error) {
+        select.innerHTML = '<option value="">Error loading executions</option>';
+        console.error('Error loading executions:', error);
+    }
+}
+
+async function previewDeletion() {
+    const executionId = document.getElementById('execution-select').value;
+    const previewSection = document.getElementById('preview-section');
+    const startBtn = document.getElementById('start-btn');
+
+    if (!executionId) {
+        previewSection.style.display = 'none';
+        startBtn.disabled = true;
+        previewData = null;
+        return;
+    }
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/deletion/preview`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ execution_id: parseInt(executionId) }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to preview deletion');
+        }
+
+        previewData = await response.json();
+
+        document.getElementById('preview-count').textContent = previewData.total_records;
+        document.getElementById('preview-type').textContent = previewData.record_type;
+        document.getElementById('preview-task').textContent = previewData.task_name;
+        document.getElementById('preview-sample').textContent =
+            previewData.sample_ids.length > 0 ? previewData.sample_ids.join(', ') : 'No IDs found';
+
+        previewSection.style.display = 'block';
+        startBtn.disabled = previewData.total_records === 0;
+
+    } catch (error) {
+        alert('Error: ' + error.message);
+        previewSection.style.display = 'none';
+        startBtn.disabled = true;
+        previewData = null;
+    }
+}
+
+function confirmDeletion() {
+    if (!previewData) return;
+
+    document.getElementById('confirm-count').textContent = previewData.total_records;
+    document.getElementById('confirm-type').textContent = previewData.record_type;
+    document.getElementById('confirm-modal').style.display = 'flex';
+}
+
+function closeModal() {
+    document.getElementById('confirm-modal').style.display = 'none';
+}
+
+async function startDeletion() {
+    closeModal();
+
+    const executionId = document.getElementById('execution-select').value;
+    const cascade = document.getElementById('cascade-check').checked;
+
+    if (!executionId) {
+        alert('Please select an execution');
+        return;
+    }
+
+    const startBtn = document.getElementById('start-btn');
+    startBtn.disabled = true;
+    startBtn.textContent = 'Starting...';
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/deletion/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                execution_id: parseInt(executionId),
+                cascade: cascade,
+            }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to start deletion');
+        }
+
+        const result = await response.json();
+        currentDeletionId = result.deletion_id;
+
+        // Show progress
+        document.getElementById('deletion-progress').style.display = 'block';
+        document.getElementById('progress-stats').style.display = 'grid';
+
+        // Reload list
+        await loadDeletions();
+
+        // Start polling
+        pollInterval = setInterval(() => pollStatus(result.deletion_id), 2000);
+
+    } catch (error) {
+        alert('Error: ' + error.message);
+        startBtn.disabled = false;
+        startBtn.textContent = 'Start Deletion';
+    }
+}
+
+async function pollStatus(deletionId) {
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/deletion/status/${deletionId}`);
+        const status = await response.json();
+
+        // Update progress
+        document.getElementById('progress-fill').style.width = `${status.progress_percent}%`;
+        document.getElementById('progress-status').textContent =
+            `${status.status}: ${status.deleted_count + status.failed_count + status.skipped_count} / ${status.total_records} records processed`;
+
+        document.getElementById('stat-deleted').textContent = status.deleted_count;
+        document.getElementById('stat-failed').textContent = status.failed_count;
+        document.getElementById('stat-skipped').textContent = status.skipped_count;
+        document.getElementById('stat-total').textContent = status.total_records;
+
+        if (status.status === 'completed' || status.status === 'failed') {
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+
+            document.getElementById('start-btn').disabled = false;
+            document.getElementById('start-btn').textContent = 'Start Deletion';
+
+            await loadDeletions();
+
+            if (status.status === 'completed') {
+                const successMsg = `Completed! Deleted: ${status.deleted_count}, Failed: ${status.failed_count}, Skipped: ${status.skipped_count}`;
+                document.getElementById('progress-status').innerHTML = successMsg;
+            }
+        }
+
+    } catch (error) {
+        console.error('Error polling status:', error);
+    }
+}
+
+async function loadDeletions() {
+    const tbody = document.getElementById('deletions-table');
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/deletion/list`);
+        if (!response.ok) {
+            throw new Error('Failed to load deletions');
+        }
+        const data = await response.json();
+
+        if (data.deletions.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No deletions yet</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.deletions.map(d => `
+            <tr>
+                <td><code title="${d.id}">${truncate(d.id, 25)}</code></td>
+                <td>#${d.execution_id}</td>
+                <td>${d.record_type || '-'}</td>
+                <td><span class="badge badge-${getStatusClass(d.status)}">${d.status}</span></td>
+                <td>
+                    ${d.status === 'completed' || d.status === 'failed' ? `
+                        <span class="text-success">${d.deleted_count}</span> /
+                        <span class="text-danger">${d.failed_count}</span> /
+                        <span class="text-warning">${d.total_records - d.deleted_count - d.failed_count}</span>
+                    ` : '-'}
+                </td>
+                <td>${new Date(d.created_at).toLocaleString('zh-TW')}</td>
+                <td class="flex gap-1">
+                    ${d.failed_count > 0 ? `
+                        <button class="btn btn-sm btn-secondary" onclick="showFailed('${d.id}')">View Failed</button>
+                    ` : ''}
+                    ${d.status !== 'running' ? `
+                        <button class="btn btn-sm btn-danger" onclick="deleteDeletionRecord('${d.id}')">Delete</button>
+                    ` : ''}
+                </td>
+            </tr>
+        `).join('');
+
+    } catch (error) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">Error: ${error.message}</td></tr>`;
+    }
+}
+
+async function showFailed(deletionId) {
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/deletion/failed/${deletionId}`);
+        const data = await response.json();
+
+        let message = `Failed Records (${data.failed_count}):\n\n`;
+        data.failed_records.forEach((record, i) => {
+            message += `${i + 1}. ID: ${record.id}\n   Error: ${record.error}\n\n`;
+        });
+
+        alert(message);
+    } catch (error) {
+        alert('Error loading failed records: ' + error.message);
+    }
+}
+
+async function deleteDeletionRecord(deletionId) {
+    if (!confirm(`Delete deletion record ${deletionId}?\n\nThis will only remove the deletion record from history, not restore the deleted FOLIO records.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/deletion/${deletionId}`, {
+            method: 'DELETE',
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to delete record');
+        }
+
+        await loadDeletions();
+
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+function getStatusClass(status) {
+    switch (status) {
+        case 'completed': return 'success';
+        case 'running': return 'info';
+        case 'pending': return 'warning';
+        case 'failed': return 'danger';
+        default: return 'info';
+    }
+}
+
+function truncate(str, maxLen) {
+    if (!str) return '';
+    return str.length > maxLen ? str.substring(0, maxLen) + '...' : str;
+}
+
+// Close modal on click outside
+document.getElementById('confirm-modal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeModal();
+    }
+});
+</script>
+
+<style>
+.stat-box {
+    text-align: center;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+.stat-value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+.stat-label {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+.grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+}
+.grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+}
+@media (max-width: 768px) {
+    .grid-3 { grid-template-columns: repeat(2, 1fr); }
+    .grid-4 { grid-template-columns: repeat(2, 1fr); }
+}
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+.modal-content {
+    background: #1a1a2e;
+    border-radius: 8px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    border: 1px solid #333;
+}
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid #333;
+    background: #16162a;
+}
+.modal-header h3 {
+    margin: 0;
+    color: #fff;
+}
+.modal-body {
+    padding: 1rem;
+    background: #1a1a2e;
+    color: #e0e0e0;
+}
+.modal-body p {
+    margin: 0.5rem 0;
+}
+
+.alert-danger {
+    background: rgba(220, 53, 69, 0.2);
+    border: 1px solid #dc3545;
+    color: #ff6b6b;
+    padding: 1rem;
+    border-radius: 4px;
+}
+</style>
+{% endblock %}

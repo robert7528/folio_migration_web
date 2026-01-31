@@ -121,3 +121,39 @@ class Validation(Base):
 
     def __repr__(self):
         return f"<Validation {self.id}: {self.record_type} ({self.status})>"
+
+
+class Deletion(Base):
+    """Batch deletion record model."""
+
+    __tablename__ = "deletions"
+
+    id = Column(String(100), primary_key=True)  # deletion_id
+    client_code = Column(String(20), ForeignKey("clients.client_code"), nullable=False, index=True)
+    execution_id = Column(Integer, ForeignKey("executions.id"), nullable=False)
+
+    # Deletion info
+    record_type = Column(String(50), nullable=True)  # instances, holdings, items, users
+    status = Column(String(20), default="pending")  # pending, running, completed, failed, cancelled
+
+    # Statistics
+    total_records = Column(Integer, default=0)  # Total records to delete
+    deleted_count = Column(Integer, default=0)  # Successfully deleted
+    failed_count = Column(Integer, default=0)  # Failed to delete
+    skipped_count = Column(Integer, default=0)  # Skipped (not found in FOLIO)
+    progress_percent = Column(Float, default=0.0)
+
+    # Timing
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    duration_seconds = Column(Float, nullable=True)
+
+    # Error tracking
+    error_message = Column(Text, nullable=True)
+    failed_ids_json = Column(Text, nullable=True)  # JSON array of failed record IDs
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.now)
+
+    def __repr__(self):
+        return f"<Deletion {self.id}: {self.record_type} ({self.status})>"

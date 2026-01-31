@@ -51,7 +51,7 @@ templates.env.globals["root_path"] = settings.root_path
 
 
 # Import and include API routers
-from .api import clients, credentials, files, config_editor, health, tasks, executions, validation  # noqa: E402
+from .api import clients, credentials, files, config_editor, health, tasks, executions, validation, deletion  # noqa: E402
 
 app.include_router(clients.router)
 app.include_router(credentials.router)
@@ -61,6 +61,7 @@ app.include_router(health.router)
 app.include_router(tasks.router)
 app.include_router(executions.router)
 app.include_router(validation.router)
+app.include_router(deletion.router)
 
 
 # HTML Pages
@@ -195,6 +196,19 @@ async def validation_results_page(request: Request, client_code: str, validation
             "title": "Validation Results",
             "client_code": client_code,
             "validation_id": validation_id,
+        },
+    )
+
+
+@app.get("/clients/{client_code}/deletion", response_class=HTMLResponse)
+async def deletion_page(request: Request, client_code: str):
+    """Batch deletion page."""
+    return templates.TemplateResponse(
+        "deletion/index.html",
+        {
+            "request": request,
+            "title": "Batch Deletion",
+            "client_code": client_code,
         },
     )
 
