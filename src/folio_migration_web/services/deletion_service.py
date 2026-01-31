@@ -352,7 +352,7 @@ class DeletionService:
 
         return records
 
-    async def preview_deletion(
+    def preview_deletion(
         self,
         execution: Execution,
     ) -> Dict[str, Any]:

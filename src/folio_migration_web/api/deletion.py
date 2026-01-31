@@ -244,12 +244,14 @@ async def preview_deletion(
     # Preview deletion
     service = get_deletion_service(client_path, db)
     try:
-        preview = await service.preview_deletion(execution)
+        preview = service.preview_deletion(execution)
         return DeletionPreviewResponse(**preview)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Preview failed: {str(e)}")
 
 
 @router.post("/start")
