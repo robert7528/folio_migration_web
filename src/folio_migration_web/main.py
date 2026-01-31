@@ -51,7 +51,7 @@ templates.env.globals["root_path"] = settings.root_path
 
 
 # Import and include API routers
-from .api import clients, credentials, files, config_editor, health, tasks, executions  # noqa: E402
+from .api import clients, credentials, files, config_editor, health, tasks, executions, validation  # noqa: E402
 
 app.include_router(clients.router)
 app.include_router(credentials.router)
@@ -60,6 +60,7 @@ app.include_router(config_editor.router)
 app.include_router(health.router)
 app.include_router(tasks.router)
 app.include_router(executions.router)
+app.include_router(validation.router)
 
 
 # HTML Pages
@@ -167,6 +168,33 @@ async def execution_detail_page(request: Request, client_code: str, execution_id
             "title": f"Execution #{execution_id}",
             "client_code": client_code,
             "execution_id": execution_id,
+        },
+    )
+
+
+@app.get("/clients/{client_code}/validation", response_class=HTMLResponse)
+async def validation_page(request: Request, client_code: str):
+    """Data validation page."""
+    return templates.TemplateResponse(
+        "validation/index.html",
+        {
+            "request": request,
+            "title": "Data Validation",
+            "client_code": client_code,
+        },
+    )
+
+
+@app.get("/clients/{client_code}/validation/{validation_id}", response_class=HTMLResponse)
+async def validation_results_page(request: Request, client_code: str, validation_id: str):
+    """Validation results page."""
+    return templates.TemplateResponse(
+        "validation/results.html",
+        {
+            "request": request,
+            "title": "Validation Results",
+            "client_code": client_code,
+            "validation_id": validation_id,
         },
     )
 

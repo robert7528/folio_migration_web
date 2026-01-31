@@ -1,0 +1,454 @@
+{% extends "base.html" %}
+
+{% block title %}Validation Results - {{ client_code }}{% endblock %}
+
+{% block content %}
+<div class="flex-between mb-2">
+    <h1>Validation Results</h1>
+    <div class="flex gap-1">
+        <a href="{{ root_path }}/clients/{{ client_code }}/validation" class="btn btn-secondary">Back to Validation</a>
+        <div class="dropdown">
+            <button class="btn btn-primary dropdown-toggle" onclick="toggleDropdown()">Export</button>
+            <div class="dropdown-menu" id="export-dropdown">
+                <a href="#" onclick="exportReport('json')">Export as JSON</a>
+                <a href="#" onclick="exportReport('csv')">Export as CSV</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Summary -->
+<div class="card mb-2">
+    <div class="card-header">
+        <span class="card-title">Validation Summary</span>
+        <span id="validation-status" class="badge">Loading...</span>
+    </div>
+    <div id="summary-content" class="p-2">
+        <p class="text-muted">Loading summary...</p>
+    </div>
+</div>
+
+<!-- Filter and Results -->
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Detailed Results</span>
+        <div class="flex gap-1">
+            <select id="status-filter" class="btn btn-secondary btn-sm" onchange="loadResults()">
+                <option value="">All Status</option>
+                <option value="found">Found</option>
+                <option value="not_found">Not Found</option>
+                <option value="mismatch">Mismatch</option>
+                <option value="error">Error</option>
+            </select>
+            <button class="btn btn-sm btn-secondary" onclick="loadResults()">Refresh</button>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Legacy ID</th>
+                    <th>FOLIO ID</th>
+                    <th>HRID</th>
+                    <th>Status</th>
+                    <th>Differences</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="results-table">
+                <tr>
+                    <td colspan="7" class="text-center text-muted">Loading...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div id="pagination" class="flex-between mt-2 p-2" style="display: none;">
+        <span id="page-info"></span>
+        <div class="flex gap-1">
+            <button class="btn btn-sm btn-secondary" id="prev-btn" onclick="prevPage()">Previous</button>
+            <button class="btn btn-sm btn-secondary" id="next-btn" onclick="nextPage()">Next</button>
+        </div>
+    </div>
+</div>
+
+<!-- Record Detail Modal -->
+<div id="detail-modal" class="modal" style="display: none;">
+    <div class="modal-content modal-lg">
+        <div class="modal-header">
+            <h3>Record Comparison</h3>
+            <button class="btn btn-sm btn-secondary" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="modal-body">
+            <p class="text-muted">Loading...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const clientCode = '{{ client_code }}';
+const validationId = '{{ validation_id }}';
+let currentPage = 0;
+const pageSize = 50;
+let totalResults = 0;
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadSummary();
+    await loadResults();
+});
+
+async function loadSummary() {
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/validation/status/${validationId}`);
+        const status = await response.json();
+
+        document.getElementById('validation-status').textContent = status.status;
+        document.getElementById('validation-status').className = `badge badge-${getStatusClass(status.status)}`;
+
+        const container = document.getElementById('summary-content');
+        container.innerHTML = `
+            <div class="grid grid-4 mb-2">
+                <div class="stat-box">
+                    <span class="stat-value">${status.total_local_records}</span>
+                    <span class="stat-label">Total Records</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value text-success">${status.total_found_in_folio}</span>
+                    <span class="stat-label">Found in FOLIO</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value text-danger">${status.total_not_found}</span>
+                    <span class="stat-label">Not Found</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value text-warning">${status.total_mismatches}</span>
+                    <span class="stat-label">Mismatches</span>
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <p><strong>Record Type:</strong> ${status.record_type || '-'}</p>
+                <p><strong>Duration:</strong> ${status.duration_seconds ? status.duration_seconds.toFixed(2) + 's' : '-'}</p>
+                <p><strong>Success Rate:</strong> ${status.total_local_records > 0 ?
+                    ((status.total_found_in_folio / status.total_local_records) * 100).toFixed(1) + '%' : '-'}</p>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error loading summary:', error);
+    }
+}
+
+async function loadResults() {
+    const tbody = document.getElementById('results-table');
+    const statusFilter = document.getElementById('status-filter').value;
+
+    try {
+        let url = `${ROOT_PATH}/api/clients/${clientCode}/validation/results/${validationId}?limit=${pageSize}&offset=${currentPage * pageSize}`;
+        if (statusFilter) {
+            url += `&status_filter=${statusFilter}`;
+        }
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        totalResults = data.summary.filtered_count;
+        updatePagination();
+
+        if (data.results.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No results found</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.results.map((result, index) => `
+            <tr>
+                <td>${currentPage * pageSize + index + 1}</td>
+                <td><code>${truncate(result.legacy_id, 20)}</code></td>
+                <td>${result.folio_id ? `<code>${truncate(result.folio_id, 12)}</code>` : '-'}</td>
+                <td>${result.hrid || '-'}</td>
+                <td><span class="badge badge-${getResultStatusClass(result.status)}">${result.status}</span></td>
+                <td>
+                    ${result.differences.length > 0 ? `
+                        <span class="text-warning">${result.differences.length} difference(s)</span>
+                    ` : (result.error_message ? `
+                        <span class="text-danger" title="${escapeHtml(result.error_message)}">Error</span>
+                    ` : '-')}
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-secondary" onclick="showDetail(${currentPage * pageSize + index})">
+                        View
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+
+    } catch (error) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">Error: ${error.message}</td></tr>`;
+    }
+}
+
+function updatePagination() {
+    const pagination = document.getElementById('pagination');
+    const totalPages = Math.ceil(totalResults / pageSize);
+
+    if (totalPages <= 1) {
+        pagination.style.display = 'none';
+        return;
+    }
+
+    pagination.style.display = 'flex';
+    document.getElementById('page-info').textContent =
+        `Page ${currentPage + 1} of ${totalPages} (${totalResults} total)`;
+    document.getElementById('prev-btn').disabled = currentPage === 0;
+    document.getElementById('next-btn').disabled = currentPage >= totalPages - 1;
+}
+
+function prevPage() {
+    if (currentPage > 0) {
+        currentPage--;
+        loadResults();
+    }
+}
+
+function nextPage() {
+    const totalPages = Math.ceil(totalResults / pageSize);
+    if (currentPage < totalPages - 1) {
+        currentPage++;
+        loadResults();
+    }
+}
+
+async function showDetail(index) {
+    const modal = document.getElementById('detail-modal');
+    const body = document.getElementById('modal-body');
+    modal.style.display = 'flex';
+    body.innerHTML = '<p class="text-muted">Loading...</p>';
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/validation/record/${validationId}/${index}`);
+        const detail = await response.json();
+
+        body.innerHTML = `
+            <div class="mb-2">
+                <p><strong>Legacy ID:</strong> ${detail.legacy_id}</p>
+                <p><strong>FOLIO ID:</strong> ${detail.folio_id || 'Not found'}</p>
+                <p><strong>HRID:</strong> ${detail.hrid || '-'}</p>
+                <p><strong>Status:</strong> <span class="badge badge-${getResultStatusClass(detail.status)}">${detail.status}</span></p>
+                ${detail.error_message ? `<p class="text-danger"><strong>Error:</strong> ${escapeHtml(detail.error_message)}</p>` : ''}
+            </div>
+
+            ${detail.differences && detail.differences.length > 0 ? `
+                <h4>Differences</h4>
+                <table class="mb-2">
+                    <thead>
+                        <tr>
+                            <th>Field</th>
+                            <th>Local Value</th>
+                            <th>FOLIO Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${detail.differences.map(diff => `
+                            <tr>
+                                <td><code>${diff.field}</code></td>
+                                <td>${formatValue(diff.local_value)}</td>
+                                <td>${formatValue(diff.folio_value)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            ` : ''}
+
+            <div class="grid grid-2">
+                <div>
+                    <h4>Local Data</h4>
+                    <pre class="json-view">${JSON.stringify(detail.local_data, null, 2)}</pre>
+                </div>
+                <div>
+                    <h4>FOLIO Data</h4>
+                    <pre class="json-view">${detail.folio_data ? JSON.stringify(detail.folio_data, null, 2) : 'Not found'}</pre>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        body.innerHTML = `<p class="text-danger">Error loading detail: ${error.message}</p>`;
+    }
+}
+
+function closeModal() {
+    document.getElementById('detail-modal').style.display = 'none';
+}
+
+function toggleDropdown() {
+    const dropdown = document.getElementById('export-dropdown');
+    dropdown.classList.toggle('show');
+}
+
+function exportReport(format) {
+    window.location.href = `${ROOT_PATH}/api/clients/${clientCode}/validation/results/${validationId}/export?format=${format}`;
+    document.getElementById('export-dropdown').classList.remove('show');
+}
+
+function getStatusClass(status) {
+    switch (status) {
+        case 'completed': return 'success';
+        case 'running': return 'info';
+        case 'pending': return 'warning';
+        case 'failed': return 'danger';
+        default: return 'info';
+    }
+}
+
+function getResultStatusClass(status) {
+    switch (status) {
+        case 'found': return 'success';
+        case 'not_found': return 'danger';
+        case 'mismatch': return 'warning';
+        case 'error': return 'danger';
+        default: return 'info';
+    }
+}
+
+function truncate(str, maxLen) {
+    if (!str) return '';
+    return str.length > maxLen ? str.substring(0, maxLen) + '...' : str;
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function formatValue(value) {
+    if (value === null || value === undefined) {
+        return '<span class="text-muted">null</span>';
+    }
+    if (typeof value === 'object') {
+        return `<code>${JSON.stringify(value)}</code>`;
+    }
+    return escapeHtml(String(value));
+}
+
+// Close modal on click outside
+document.getElementById('detail-modal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeModal();
+    }
+});
+
+// Close dropdown on click outside
+document.addEventListener('click', function(e) {
+    if (!e.target.matches('.dropdown-toggle')) {
+        document.querySelectorAll('.dropdown-menu').forEach(d => d.classList.remove('show'));
+    }
+});
+</script>
+
+<style>
+.stat-box {
+    text-align: center;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+.stat-value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+.stat-label {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+.grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+}
+.grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+}
+@media (max-width: 768px) {
+    .grid-4 { grid-template-columns: repeat(2, 1fr); }
+    .grid-2 { grid-template-columns: 1fr; }
+}
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+.modal-content {
+    background: var(--bg-primary);
+    border-radius: 8px;
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+.modal-lg {
+    max-width: 900px;
+}
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.modal-body {
+    padding: 1rem;
+}
+
+.json-view {
+    background: var(--bg-secondary);
+    padding: 1rem;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 0.75rem;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.dropdown {
+    position: relative;
+    display: inline-block;
+}
+.dropdown-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 100%;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    min-width: 150px;
+    z-index: 100;
+}
+.dropdown-menu.show {
+    display: block;
+}
+.dropdown-menu a {
+    display: block;
+    padding: 0.5rem 1rem;
+    text-decoration: none;
+    color: var(--text-primary);
+}
+.dropdown-menu a:hover {
+    background: var(--bg-secondary);
+}
+</style>
+{% endblock %}

@@ -1,0 +1,400 @@
+{% extends "base.html" %}
+
+{% block title %}Data Validation - {{ client_code }}{% endblock %}
+
+{% block content %}
+<div class="flex-between mb-2">
+    <h1>Data Validation</h1>
+    <a href="{{ root_path }}/clients/{{ client_code }}" class="btn btn-secondary">Back to Project</a>
+</div>
+
+<!-- FOLIO Statistics -->
+<div class="card mb-2">
+    <div class="card-header">
+        <span class="card-title">FOLIO Platform Statistics</span>
+        <button class="btn btn-sm btn-secondary" onclick="loadFolioStats()">Refresh</button>
+    </div>
+    <div id="folio-stats" class="p-2">
+        <p class="text-muted">Loading FOLIO statistics...</p>
+    </div>
+</div>
+
+<!-- Start Validation -->
+<div class="card mb-2">
+    <div class="card-header">
+        <span class="card-title">Start New Validation</span>
+    </div>
+    <div class="p-2">
+        <div class="form-group">
+            <label for="execution-select">Select Completed Execution</label>
+            <select id="execution-select" class="form-control">
+                <option value="">Loading executions...</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="sample-size">Sample Size (optional)</label>
+            <input type="number" id="sample-size" class="form-control" placeholder="Leave empty to validate all records" min="1" max="1000">
+            <small class="text-muted">Validate only a random sample of records (recommended for large datasets)</small>
+        </div>
+
+        <button id="start-btn" class="btn btn-primary" onclick="startValidation()" disabled>
+            Start Validation
+        </button>
+    </div>
+</div>
+
+<!-- Recent Validations -->
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Recent Validations</span>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Validation ID</th>
+                    <th>Execution</th>
+                    <th>Record Type</th>
+                    <th>Status</th>
+                    <th>Results</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="validations-table">
+                <tr>
+                    <td colspan="6" class="text-center text-muted">No recent validations</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Running Validation Progress -->
+<div id="validation-progress" class="card mt-2" style="display: none;">
+    <div class="card-header">
+        <span class="card-title">Validation in Progress</span>
+    </div>
+    <div class="p-2">
+        <div class="progress-bar mb-1">
+            <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+        </div>
+        <p id="progress-status" class="text-muted">Starting...</p>
+        <div id="progress-stats" class="grid grid-4 mt-2" style="display: none;">
+            <div class="stat-box">
+                <span class="stat-value text-success" id="stat-found">0</span>
+                <span class="stat-label">Found</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-value text-danger" id="stat-not-found">0</span>
+                <span class="stat-label">Not Found</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-value text-warning" id="stat-mismatch">0</span>
+                <span class="stat-label">Mismatch</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-value text-muted" id="stat-errors">0</span>
+                <span class="stat-label">Errors</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const clientCode = '{{ client_code }}';
+let currentValidationId = null;
+let pollInterval = null;
+
+// Store recent validations in localStorage
+const STORAGE_KEY = `validations_${clientCode}`;
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadFolioStats();
+    await loadExecutions();
+    loadRecentValidations();
+});
+
+async function loadFolioStats() {
+    const container = document.getElementById('folio-stats');
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/validation/folio-stats`);
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to load stats');
+        }
+        const stats = await response.json();
+
+        container.innerHTML = `
+            <div class="grid grid-4">
+                <div class="stat-box">
+                    <span class="stat-value">${stats.instances.toLocaleString()}</span>
+                    <span class="stat-label">Instances</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value">${stats.holdings.toLocaleString()}</span>
+                    <span class="stat-label">Holdings</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value">${stats.items.toLocaleString()}</span>
+                    <span class="stat-label">Items</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value">${stats.users.toLocaleString()}</span>
+                    <span class="stat-label">Users</span>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        container.innerHTML = `<p class="text-danger">Error: ${error.message}</p>`;
+    }
+}
+
+async function loadExecutions() {
+    const select = document.getElementById('execution-select');
+    const startBtn = document.getElementById('start-btn');
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/executions?status=completed&limit=50`);
+        const data = await response.json();
+
+        if (data.executions.length === 0) {
+            select.innerHTML = '<option value="">No completed executions available</option>';
+            return;
+        }
+
+        select.innerHTML = '<option value="">Select an execution...</option>' +
+            data.executions.map(exec => `
+                <option value="${exec.id}">
+                    #${exec.id} - ${exec.task_name} (${exec.task_type}) - ${new Date(exec.completed_at).toLocaleString('zh-TW')}
+                </option>
+            `).join('');
+
+        select.addEventListener('change', () => {
+            startBtn.disabled = !select.value;
+        });
+
+    } catch (error) {
+        select.innerHTML = '<option value="">Error loading executions</option>';
+        console.error('Error loading executions:', error);
+    }
+}
+
+function loadRecentValidations() {
+    const tbody = document.getElementById('validations-table');
+    const stored = localStorage.getItem(STORAGE_KEY);
+    const validations = stored ? JSON.parse(stored) : [];
+
+    if (validations.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No recent validations</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = validations.map(v => `
+        <tr>
+            <td><code>${v.id.substring(0, 20)}...</code></td>
+            <td>#${v.execution_id}</td>
+            <td>${v.record_type || '-'}</td>
+            <td><span class="badge badge-${getStatusClass(v.status)}">${v.status}</span></td>
+            <td>
+                ${v.status === 'completed' ? `
+                    <span class="text-success">${v.found || 0}</span> /
+                    <span class="text-danger">${v.not_found || 0}</span> /
+                    <span class="text-warning">${v.mismatch || 0}</span>
+                ` : '-'}
+            </td>
+            <td>
+                ${v.status === 'completed' ? `
+                    <a href="${ROOT_PATH}/clients/${clientCode}/validation/${v.id}" class="btn btn-sm btn-primary">View Results</a>
+                ` : `
+                    <button class="btn btn-sm btn-secondary" onclick="checkStatus('${v.id}')">Check Status</button>
+                `}
+            </td>
+        </tr>
+    `).join('');
+}
+
+function saveValidation(validation) {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    const validations = stored ? JSON.parse(stored) : [];
+
+    // Update existing or add new
+    const existingIndex = validations.findIndex(v => v.id === validation.id);
+    if (existingIndex >= 0) {
+        validations[existingIndex] = validation;
+    } else {
+        validations.unshift(validation);
+    }
+
+    // Keep only last 20
+    if (validations.length > 20) {
+        validations.splice(20);
+    }
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(validations));
+}
+
+async function startValidation() {
+    const executionId = document.getElementById('execution-select').value;
+    const sampleSize = document.getElementById('sample-size').value;
+
+    if (!executionId) {
+        alert('Please select an execution');
+        return;
+    }
+
+    const startBtn = document.getElementById('start-btn');
+    startBtn.disabled = true;
+    startBtn.textContent = 'Starting...';
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/validation/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                execution_id: parseInt(executionId),
+                sample_size: sampleSize ? parseInt(sampleSize) : null,
+            }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to start validation');
+        }
+
+        const result = await response.json();
+        currentValidationId = result.validation_id;
+
+        // Save to recent validations
+        saveValidation({
+            id: result.validation_id,
+            execution_id: parseInt(executionId),
+            status: 'running',
+        });
+
+        // Show progress
+        document.getElementById('validation-progress').style.display = 'block';
+        document.getElementById('progress-stats').style.display = 'grid';
+
+        // Start polling
+        pollInterval = setInterval(() => pollStatus(result.validation_id), 2000);
+
+    } catch (error) {
+        alert('Error: ' + error.message);
+        startBtn.disabled = false;
+        startBtn.textContent = 'Start Validation';
+    }
+}
+
+async function pollStatus(validationId) {
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/validation/status/${validationId}`);
+        const status = await response.json();
+
+        // Update progress
+        document.getElementById('progress-fill').style.width = `${status.progress_percent}%`;
+        document.getElementById('progress-status').textContent =
+            `${status.status}: ${status.total_found_in_folio + status.total_not_found + status.total_mismatches + status.total_errors} / ${status.total_local_records} records processed`;
+
+        document.getElementById('stat-found').textContent = status.total_found_in_folio;
+        document.getElementById('stat-not-found').textContent = status.total_not_found;
+        document.getElementById('stat-mismatch').textContent = status.total_mismatches;
+        document.getElementById('stat-errors').textContent = status.total_errors;
+
+        // Update stored validation
+        saveValidation({
+            id: validationId,
+            execution_id: status.execution_id,
+            status: status.status,
+            record_type: status.record_type,
+            found: status.total_found_in_folio,
+            not_found: status.total_not_found,
+            mismatch: status.total_mismatches,
+        });
+
+        if (status.status === 'completed' || status.status === 'failed') {
+            clearInterval(pollInterval);
+            pollInterval = null;
+
+            document.getElementById('start-btn').disabled = false;
+            document.getElementById('start-btn').textContent = 'Start Validation';
+
+            loadRecentValidations();
+
+            if (status.status === 'completed') {
+                document.getElementById('progress-status').innerHTML =
+                    `Completed! <a href="${ROOT_PATH}/clients/${clientCode}/validation/${validationId}">View Results</a>`;
+            }
+        }
+
+    } catch (error) {
+        console.error('Error polling status:', error);
+    }
+}
+
+async function checkStatus(validationId) {
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/validation/status/${validationId}`);
+        const status = await response.json();
+
+        saveValidation({
+            id: validationId,
+            execution_id: status.execution_id,
+            status: status.status,
+            record_type: status.record_type,
+            found: status.total_found_in_folio,
+            not_found: status.total_not_found,
+            mismatch: status.total_mismatches,
+        });
+
+        loadRecentValidations();
+
+        if (status.status === 'completed') {
+            window.location.href = `${ROOT_PATH}/clients/${clientCode}/validation/${validationId}`;
+        }
+    } catch (error) {
+        alert('Error checking status: ' + error.message);
+    }
+}
+
+function getStatusClass(status) {
+    switch (status) {
+        case 'completed': return 'success';
+        case 'running': return 'info';
+        case 'pending': return 'warning';
+        case 'failed': return 'danger';
+        default: return 'info';
+    }
+}
+</script>
+
+<style>
+.stat-box {
+    text-align: center;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+.stat-value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+.stat-label {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+.grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+}
+@media (max-width: 768px) {
+    .grid-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+</style>
+{% endblock %}

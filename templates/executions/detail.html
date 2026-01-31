@@ -6,6 +6,7 @@
 <div class="flex-between mb-2">
     <h1>Execution #{{ execution_id }}</h1>
     <div class="flex gap-1">
+        <a href="{{ root_path }}/clients/{{ client_code }}/validation" id="validate-btn" class="btn btn-success" style="display: none;">Validate Data</a>
         <a href="{{ root_path }}/clients/{{ client_code }}/execute" class="btn btn-primary">New Execution</a>
         <a href="{{ root_path }}/clients/{{ client_code }}/executions" class="btn btn-secondary">History</a>
         <a href="{{ root_path }}/clients/{{ client_code }}" class="btn btn-secondary">Back to Project</a>
@@ -247,6 +248,11 @@ function renderExecution() {
         clearInterval(pollInterval);
         pollInterval = null;
         loadResults();
+    }
+
+    // Show validate button for completed executions
+    if (execution.status === 'completed') {
+        document.getElementById('validate-btn').style.display = 'inline-block';
     }
 }
 
