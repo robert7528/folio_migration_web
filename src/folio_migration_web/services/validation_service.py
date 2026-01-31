@@ -495,23 +495,26 @@ class ValidationService:
         return differences
 
     def _get_compare_fields(self, record_type: RecordType) -> List[str]:
-        """Get fields to compare for each record type."""
+        """Get fields to compare for each record type.
+
+        Note: hrid is excluded for instances/holdings/items because:
+        - Local file contains legacy ID in hrid field
+        - FOLIO auto-generates new HRID when hridHandling="default"
+        - They will always be different, which is expected behavior
+        """
         fields_map = {
             RecordType.INSTANCES: [
                 "title",
-                "hrid",
                 "source",
                 "instanceTypeId",
                 "modeOfIssuanceId",
             ],
             RecordType.HOLDINGS: [
-                "hrid",
                 "instanceId",
                 "permanentLocationId",
                 "callNumber",
             ],
             RecordType.ITEMS: [
-                "hrid",
                 "holdingsRecordId",
                 "barcode",
                 "materialTypeId",
