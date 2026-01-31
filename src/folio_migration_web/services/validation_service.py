@@ -418,6 +418,12 @@ class ValidationService:
 
     def _extract_legacy_id(self, record: Dict, record_type: RecordType) -> Optional[str]:
         """Extract legacy ID from record."""
+        # For instances/holdings/items, HRID is typically the legacy ID
+        if record_type in (RecordType.INSTANCES, RecordType.HOLDINGS, RecordType.ITEMS):
+            hrid = record.get("hrid")
+            if hrid:
+                return hrid
+
         # Check common legacy ID locations
         if "legacyIdentifier" in record:
             return record["legacyIdentifier"]
@@ -430,7 +436,7 @@ class ValidationService:
 
         # Check externalSystemId for users
         if record_type == RecordType.USERS:
-            return record.get("externalSystemId")
+            return record.get("externalSystemId") or record.get("barcode")
 
         return None
 
