@@ -15,7 +15,7 @@ import signal
 import subprocess
 import sys
 import threading
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Callable
 from dataclasses import dataclass, field
@@ -111,7 +111,7 @@ class ExecutionService:
 
         # Update execution record
         execution.status = "running"
-        execution.started_at = datetime.now(timezone.utc)
+        execution.started_at = datetime.utcnow()
         execution.log_file = str(log_file.relative_to(self.client_path))
         self.db.commit()
 
@@ -234,7 +234,7 @@ class ExecutionService:
             # Update final status
             execution = db.query(Execution).filter(Execution.id == execution_id).first()
             if execution:
-                execution.completed_at = datetime.now(timezone.utc)
+                execution.completed_at = datetime.utcnow()
                 if execution.started_at:
                     duration = (execution.completed_at - execution.started_at).total_seconds()
                     execution.duration_seconds = duration
@@ -259,7 +259,7 @@ class ExecutionService:
             if execution:
                 execution.status = "failed"
                 execution.error_message = str(e)
-                execution.completed_at = datetime.now(timezone.utc)
+                execution.completed_at = datetime.utcnow()
                 db.commit()
         finally:
             # Cleanup
