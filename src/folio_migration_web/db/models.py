@@ -86,3 +86,38 @@ class Execution(Base):
 
     def __repr__(self):
         return f"<Execution {self.id}: {self.task_name} ({self.status})>"
+
+
+class Validation(Base):
+    """Data validation record model."""
+
+    __tablename__ = "validations"
+
+    id = Column(String(100), primary_key=True)  # validation_id
+    client_code = Column(String(20), ForeignKey("clients.client_code"), nullable=False, index=True)
+    execution_id = Column(Integer, ForeignKey("executions.id"), nullable=False)
+
+    # Validation info
+    record_type = Column(String(50), nullable=True)  # instances, holdings, items, users
+    status = Column(String(20), default="pending")  # pending, running, completed, failed
+
+    # Statistics
+    total_local_records = Column(Integer, default=0)
+    total_found_in_folio = Column(Integer, default=0)
+    total_not_found = Column(Integer, default=0)
+    total_mismatches = Column(Integer, default=0)
+    total_errors = Column(Integer, default=0)
+
+    # Timing
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    duration_seconds = Column(Float, nullable=True)
+
+    # Results stored as JSON
+    results_json = Column(Text, nullable=True)  # JSON array of validation results
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.now)
+
+    def __repr__(self):
+        return f"<Validation {self.id}: {self.record_type} ({self.status})>"

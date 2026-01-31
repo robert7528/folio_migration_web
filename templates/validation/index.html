@@ -44,10 +44,11 @@
     </div>
 </div>
 
-<!-- Recent Validations -->
+<!-- Validation History -->
 <div class="card">
     <div class="card-header">
-        <span class="card-title">Recent Validations</span>
+        <span class="card-title">Validation History</span>
+        <button class="btn btn-sm btn-secondary" onclick="loadValidations()">Refresh</button>
     </div>
     <div class="table-container">
         <table>
@@ -57,13 +58,14 @@
                     <th>Execution</th>
                     <th>Record Type</th>
                     <th>Status</th>
-                    <th>Results</th>
+                    <th>Results (Found/NotFound/Mismatch)</th>
+                    <th>Created</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="validations-table">
                 <tr>
-                    <td colspan="6" class="text-center text-muted">No recent validations</td>
+                    <td colspan="7" class="text-center text-muted">Loading...</td>
                 </tr>
             </tbody>
         </table>
@@ -108,13 +110,10 @@ const clientCode = '{{ client_code }}';
 let currentValidationId = null;
 let pollInterval = null;
 
-// Store recent validations in localStorage
-const STORAGE_KEY = `validations_${clientCode}`;
-
 document.addEventListener('DOMContentLoaded', async () => {
     await loadFolioStats();
     await loadExecutions();
-    loadRecentValidations();
+    await loadValidations();
 });
 
 async function loadFolioStats() {
@@ -182,58 +181,51 @@ async function loadExecutions() {
     }
 }
 
-function loadRecentValidations() {
+async function loadValidations() {
     const tbody = document.getElementById('validations-table');
-    const stored = localStorage.getItem(STORAGE_KEY);
-    const validations = stored ? JSON.parse(stored) : [];
 
-    if (validations.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No recent validations</td></tr>';
-        return;
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/validation/list`);
+        if (!response.ok) {
+            throw new Error('Failed to load validations');
+        }
+        const data = await response.json();
+
+        if (data.validations.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No validations yet</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.validations.map(v => `
+            <tr>
+                <td><code title="${v.id}">${truncate(v.id, 25)}</code></td>
+                <td>#${v.execution_id}</td>
+                <td>${v.record_type || '-'}</td>
+                <td><span class="badge badge-${getStatusClass(v.status)}">${v.status}</span></td>
+                <td>
+                    ${v.status === 'completed' ? `
+                        <span class="text-success">${v.total_found}</span> /
+                        <span class="text-danger">${v.total_not_found}</span> /
+                        <span class="text-warning">${v.total_mismatches}</span>
+                    ` : '-'}
+                </td>
+                <td>${new Date(v.created_at).toLocaleString('zh-TW')}</td>
+                <td class="flex gap-1">
+                    ${v.status === 'completed' ? `
+                        <a href="${ROOT_PATH}/clients/${clientCode}/validation/${v.id}" class="btn btn-sm btn-primary">View</a>
+                    ` : v.status === 'running' ? `
+                        <button class="btn btn-sm btn-secondary" onclick="pollStatus('${v.id}')">Check</button>
+                    ` : ''}
+                    ${v.status !== 'running' ? `
+                        <button class="btn btn-sm btn-danger" onclick="deleteValidation('${v.id}')">Delete</button>
+                    ` : ''}
+                </td>
+            </tr>
+        `).join('');
+
+    } catch (error) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">Error: ${error.message}</td></tr>`;
     }
-
-    tbody.innerHTML = validations.map(v => `
-        <tr>
-            <td><code>${v.id.substring(0, 20)}...</code></td>
-            <td>#${v.execution_id}</td>
-            <td>${v.record_type || '-'}</td>
-            <td><span class="badge badge-${getStatusClass(v.status)}">${v.status}</span></td>
-            <td>
-                ${v.status === 'completed' ? `
-                    <span class="text-success">${v.found || 0}</span> /
-                    <span class="text-danger">${v.not_found || 0}</span> /
-                    <span class="text-warning">${v.mismatch || 0}</span>
-                ` : '-'}
-            </td>
-            <td>
-                ${v.status === 'completed' ? `
-                    <a href="${ROOT_PATH}/clients/${clientCode}/validation/${v.id}" class="btn btn-sm btn-primary">View Results</a>
-                ` : `
-                    <button class="btn btn-sm btn-secondary" onclick="checkStatus('${v.id}')">Check Status</button>
-                `}
-            </td>
-        </tr>
-    `).join('');
-}
-
-function saveValidation(validation) {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    const validations = stored ? JSON.parse(stored) : [];
-
-    // Update existing or add new
-    const existingIndex = validations.findIndex(v => v.id === validation.id);
-    if (existingIndex >= 0) {
-        validations[existingIndex] = validation;
-    } else {
-        validations.unshift(validation);
-    }
-
-    // Keep only last 20
-    if (validations.length > 20) {
-        validations.splice(20);
-    }
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(validations));
 }
 
 async function startValidation() {
@@ -267,16 +259,12 @@ async function startValidation() {
         const result = await response.json();
         currentValidationId = result.validation_id;
 
-        // Save to recent validations
-        saveValidation({
-            id: result.validation_id,
-            execution_id: parseInt(executionId),
-            status: 'running',
-        });
-
         // Show progress
         document.getElementById('validation-progress').style.display = 'block';
         document.getElementById('progress-stats').style.display = 'grid';
+
+        // Reload list
+        await loadValidations();
 
         // Start polling
         pollInterval = setInterval(() => pollStatus(result.validation_id), 2000);
@@ -303,25 +291,16 @@ async function pollStatus(validationId) {
         document.getElementById('stat-mismatch').textContent = status.total_mismatches;
         document.getElementById('stat-errors').textContent = status.total_errors;
 
-        // Update stored validation
-        saveValidation({
-            id: validationId,
-            execution_id: status.execution_id,
-            status: status.status,
-            record_type: status.record_type,
-            found: status.total_found_in_folio,
-            not_found: status.total_not_found,
-            mismatch: status.total_mismatches,
-        });
-
         if (status.status === 'completed' || status.status === 'failed') {
-            clearInterval(pollInterval);
-            pollInterval = null;
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
 
             document.getElementById('start-btn').disabled = false;
             document.getElementById('start-btn').textContent = 'Start Validation';
 
-            loadRecentValidations();
+            await loadValidations();
 
             if (status.status === 'completed') {
                 document.getElementById('progress-status').innerHTML =
@@ -334,28 +313,25 @@ async function pollStatus(validationId) {
     }
 }
 
-async function checkStatus(validationId) {
-    try {
-        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/validation/status/${validationId}`);
-        const status = await response.json();
+async function deleteValidation(validationId) {
+    if (!confirm(`Delete validation ${validationId}?\n\nThis will permanently remove the validation record and all its results.`)) {
+        return;
+    }
 
-        saveValidation({
-            id: validationId,
-            execution_id: status.execution_id,
-            status: status.status,
-            record_type: status.record_type,
-            found: status.total_found_in_folio,
-            not_found: status.total_not_found,
-            mismatch: status.total_mismatches,
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/validation/${validationId}`, {
+            method: 'DELETE',
         });
 
-        loadRecentValidations();
-
-        if (status.status === 'completed') {
-            window.location.href = `${ROOT_PATH}/clients/${clientCode}/validation/${validationId}`;
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to delete validation');
         }
+
+        await loadValidations();
+
     } catch (error) {
-        alert('Error checking status: ' + error.message);
+        alert('Error: ' + error.message);
     }
 }
 
@@ -367,6 +343,11 @@ function getStatusClass(status) {
         case 'failed': return 'danger';
         default: return 'info';
     }
+}
+
+function truncate(str, maxLen) {
+    if (!str) return '';
+    return str.length > maxLen ? str.substring(0, maxLen) + '...' : str;
 }
 </script>
 

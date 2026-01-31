@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db.database import get_db
-from ..db.models import Client as ClientModel, Execution as ExecutionModel
+from ..db.models import Client as ClientModel, Execution as ExecutionModel, Validation as ValidationModel
 from ..services.project_service import get_project_service, ProjectService
 from ..services.validation_service import (
     FolioApiClient,
@@ -23,11 +23,6 @@ from ..utils.encryption import decrypt_value
 
 router = APIRouter(prefix="/api/clients/{client_code}/validation", tags=["validation"])
 settings = get_settings()
-
-
-# Store validation results in memory (for demo; production should use DB/cache)
-_validation_results: dict[str, ValidationSummary] = {}
-_validation_status: dict[str, str] = {}  # pending, running, completed, failed
 
 
 # ============================================================
@@ -74,6 +69,18 @@ class ValidationDetailResponse(BaseModel):
     record_type: str
     summary: dict
     results: List[ValidationResultItem]
+
+
+class ValidationListItem(BaseModel):
+    """Validation list item."""
+    id: str
+    execution_id: int
+    record_type: Optional[str]
+    status: str
+    total_found: int
+    total_not_found: int
+    total_mismatches: int
+    created_at: datetime
 
 
 class FolioStatsResponse(BaseModel):
@@ -128,6 +135,40 @@ async def get_folio_stats(
         raise HTTPException(status_code=500, detail=f"Failed to connect to FOLIO: {str(e)}")
 
 
+@router.get("/list")
+async def list_validations(
+    client_code: str,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+) -> dict:
+    """List all validations for a client."""
+    client = db.query(ClientModel).filter(ClientModel.client_code == client_code).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client '{client_code}' not found")
+
+    query = db.query(ValidationModel).filter(ValidationModel.client_code == client_code)
+    total = query.count()
+    validations = query.order_by(ValidationModel.created_at.desc()).offset(offset).limit(limit).all()
+
+    return {
+        "validations": [
+            {
+                "id": v.id,
+                "execution_id": v.execution_id,
+                "record_type": v.record_type,
+                "status": v.status,
+                "total_found": v.total_found_in_folio,
+                "total_not_found": v.total_not_found,
+                "total_mismatches": v.total_mismatches,
+                "created_at": v.created_at,
+            }
+            for v in validations
+        ],
+        "total": total,
+    }
+
+
 @router.post("/start")
 async def start_validation(
     client_code: str,
@@ -160,8 +201,16 @@ async def start_validation(
     # Create validation ID
     validation_id = f"{client_code}_{request.execution_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
-    # Mark as pending
-    _validation_status[validation_id] = "pending"
+    # Create validation record in database
+    validation = ValidationModel(
+        id=validation_id,
+        client_code=client_code,
+        execution_id=request.execution_id,
+        status="pending",
+        started_at=datetime.now(),
+    )
+    db.add(validation)
+    db.commit()
 
     # Start validation in background
     background_tasks.add_task(
@@ -200,7 +249,11 @@ async def run_validation(
 
     db = SessionLocal()
     try:
-        _validation_status[validation_id] = "running"
+        # Update status to running
+        validation = db.query(ValidationModel).filter(ValidationModel.id == validation_id).first()
+        if validation:
+            validation.status = "running"
+            db.commit()
 
         # Get credentials
         username = decrypt_value(encrypted_username)
@@ -225,19 +278,43 @@ async def run_validation(
             sample_size,
         )
 
-        # Store results
-        _validation_results[validation_id] = summary
-        _validation_status[validation_id] = "completed"
+        # Save results to database
+        validation = db.query(ValidationModel).filter(ValidationModel.id == validation_id).first()
+        if validation:
+            validation.status = "completed"
+            validation.record_type = summary.record_type
+            validation.total_local_records = summary.total_local_records
+            validation.total_found_in_folio = summary.total_found_in_folio
+            validation.total_not_found = summary.total_not_found
+            validation.total_mismatches = summary.total_mismatches
+            validation.total_errors = summary.total_errors
+            validation.completed_at = datetime.now()
+            if summary.started_at:
+                validation.duration_seconds = (validation.completed_at - summary.started_at).total_seconds()
+
+            # Store results as JSON (only essential fields to save space)
+            results_data = [
+                {
+                    "legacy_id": r.legacy_id,
+                    "folio_id": r.folio_id,
+                    "hrid": r.hrid,
+                    "status": r.status,
+                    "differences": r.differences,
+                    "error_message": r.error_message,
+                }
+                for r in summary.results
+            ]
+            validation.results_json = json.dumps(results_data, ensure_ascii=False)
+            db.commit()
 
     except Exception as e:
-        _validation_status[validation_id] = "failed"
-        # Store error as empty summary
-        _validation_results[validation_id] = ValidationSummary(
-            record_type="unknown",
-            started_at=datetime.now(),
-            completed_at=datetime.now(),
-        )
-        _validation_results[validation_id].total_errors = 1
+        # Update validation with error
+        validation = db.query(ValidationModel).filter(ValidationModel.id == validation_id).first()
+        if validation:
+            validation.status = "failed"
+            validation.completed_at = datetime.now()
+            validation.total_errors = 1
+            db.commit()
         print(f"Validation error: {e}")
 
     finally:
@@ -248,43 +325,40 @@ async def run_validation(
 async def get_validation_status(
     client_code: str,
     validation_id: str,
+    db: Session = Depends(get_db),
 ) -> ValidationStatusResponse:
     """Get validation status and summary."""
-    status = _validation_status.get(validation_id)
-    if not status:
+    validation = db.query(ValidationModel).filter(
+        ValidationModel.id == validation_id,
+        ValidationModel.client_code == client_code,
+    ).first()
+
+    if not validation:
         raise HTTPException(status_code=404, detail="Validation not found")
 
-    # Extract execution_id from validation_id
-    parts = validation_id.split("_")
-    execution_id = int(parts[1]) if len(parts) > 1 else 0
+    progress_percent = 0.0
+    if validation.total_local_records > 0:
+        progress_percent = (
+            (validation.total_found_in_folio + validation.total_not_found +
+             validation.total_mismatches + validation.total_errors)
+            / validation.total_local_records * 100
+        )
 
-    response = ValidationStatusResponse(
-        validation_id=validation_id,
-        status=status,
-        execution_id=execution_id,
+    return ValidationStatusResponse(
+        validation_id=validation.id,
+        status=validation.status,
+        execution_id=validation.execution_id,
+        record_type=validation.record_type,
+        total_local_records=validation.total_local_records,
+        total_found_in_folio=validation.total_found_in_folio,
+        total_not_found=validation.total_not_found,
+        total_mismatches=validation.total_mismatches,
+        total_errors=validation.total_errors,
+        progress_percent=progress_percent,
+        started_at=validation.started_at,
+        completed_at=validation.completed_at,
+        duration_seconds=validation.duration_seconds,
     )
-
-    # Add summary if available
-    summary = _validation_results.get(validation_id)
-    if summary:
-        response.record_type = summary.record_type
-        response.total_local_records = summary.total_local_records
-        response.total_found_in_folio = summary.total_found_in_folio
-        response.total_not_found = summary.total_not_found
-        response.total_mismatches = summary.total_mismatches
-        response.total_errors = summary.total_errors
-        response.started_at = summary.started_at
-        response.completed_at = summary.completed_at
-        response.duration_seconds = summary.duration_seconds
-
-        if summary.total_local_records > 0:
-            response.progress_percent = (
-                (summary.total_found_in_folio + summary.total_not_found +
-                 summary.total_mismatches + summary.total_errors)
-                / summary.total_local_records * 100
-            )
-
-    return response
 
 
 @router.get("/results/{validation_id}")
@@ -294,46 +368,54 @@ async def get_validation_results(
     status_filter: Optional[str] = Query(None, description="Filter by status: found, not_found, mismatch, error"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
 ) -> ValidationDetailResponse:
     """Get detailed validation results."""
-    validation_status = _validation_status.get(validation_id)
-    if not validation_status:
+    validation = db.query(ValidationModel).filter(
+        ValidationModel.id == validation_id,
+        ValidationModel.client_code == client_code,
+    ).first()
+
+    if not validation:
         raise HTTPException(status_code=404, detail="Validation not found")
 
-    summary = _validation_results.get(validation_id)
-    if not summary:
-        raise HTTPException(status_code=404, detail="Validation results not available")
+    # Parse results from JSON
+    results = []
+    if validation.results_json:
+        try:
+            results = json.loads(validation.results_json)
+        except json.JSONDecodeError:
+            pass
 
     # Filter results
-    results = summary.results
     if status_filter:
-        results = [r for r in results if r.status == status_filter]
+        results = [r for r in results if r.get("status") == status_filter]
 
     # Paginate
     total = len(results)
     results = results[offset:offset + limit]
 
     return ValidationDetailResponse(
-        validation_id=validation_id,
-        status=validation_status,
-        record_type=summary.record_type,
+        validation_id=validation.id,
+        status=validation.status,
+        record_type=validation.record_type or "unknown",
         summary={
-            "total_local_records": summary.total_local_records,
-            "total_found_in_folio": summary.total_found_in_folio,
-            "total_not_found": summary.total_not_found,
-            "total_mismatches": summary.total_mismatches,
-            "total_errors": summary.total_errors,
-            "duration_seconds": summary.duration_seconds,
+            "total_local_records": validation.total_local_records,
+            "total_found_in_folio": validation.total_found_in_folio,
+            "total_not_found": validation.total_not_found,
+            "total_mismatches": validation.total_mismatches,
+            "total_errors": validation.total_errors,
+            "duration_seconds": validation.duration_seconds,
             "filtered_count": total,
         },
         results=[
             ValidationResultItem(
-                legacy_id=r.legacy_id,
-                folio_id=r.folio_id,
-                hrid=r.hrid,
-                status=r.status,
-                differences=r.differences,
-                error_message=r.error_message,
+                legacy_id=r.get("legacy_id", "unknown"),
+                folio_id=r.get("folio_id"),
+                hrid=r.get("hrid"),
+                status=r.get("status", "unknown"),
+                differences=r.get("differences", []),
+                error_message=r.get("error_message"),
             )
             for r in results
         ],
@@ -345,14 +427,45 @@ async def export_validation_report(
     client_code: str,
     validation_id: str,
     format: str = Query("json", description="Export format: json, csv"),
+    db: Session = Depends(get_db),
 ):
     """Export validation report."""
-    summary = _validation_results.get(validation_id)
-    if not summary:
-        raise HTTPException(status_code=404, detail="Validation results not available")
+    validation = db.query(ValidationModel).filter(
+        ValidationModel.id == validation_id,
+        ValidationModel.client_code == client_code,
+    ).first()
+
+    if not validation:
+        raise HTTPException(status_code=404, detail="Validation not found")
+
+    # Parse results
+    results = []
+    if validation.results_json:
+        try:
+            results = json.loads(validation.results_json)
+        except json.JSONDecodeError:
+            pass
 
     if format == "json":
-        content = json.dumps(summary.to_dict(), indent=2, ensure_ascii=False)
+        export_data = {
+            "validation_id": validation.id,
+            "client_code": validation.client_code,
+            "execution_id": validation.execution_id,
+            "record_type": validation.record_type,
+            "status": validation.status,
+            "summary": {
+                "total_local_records": validation.total_local_records,
+                "total_found_in_folio": validation.total_found_in_folio,
+                "total_not_found": validation.total_not_found,
+                "total_mismatches": validation.total_mismatches,
+                "total_errors": validation.total_errors,
+                "duration_seconds": validation.duration_seconds,
+            },
+            "started_at": validation.started_at.isoformat() if validation.started_at else None,
+            "completed_at": validation.completed_at.isoformat() if validation.completed_at else None,
+            "results": results,
+        }
+        content = json.dumps(export_data, indent=2, ensure_ascii=False)
         return StreamingResponse(
             iter([content]),
             media_type="application/json",
@@ -375,14 +488,14 @@ async def export_validation_report(
         ])
 
         # Data
-        for result in summary.results:
+        for result in results:
             writer.writerow([
-                result.legacy_id,
-                result.folio_id or "",
-                result.hrid or "",
-                result.status,
-                json.dumps(result.differences) if result.differences else "",
-                result.error_message or "",
+                result.get("legacy_id", ""),
+                result.get("folio_id", ""),
+                result.get("hrid", ""),
+                result.get("status", ""),
+                json.dumps(result.get("differences", [])) if result.get("differences") else "",
+                result.get("error_message", ""),
             ])
 
         content = output.getvalue()
@@ -403,25 +516,66 @@ async def get_validation_record_detail(
     client_code: str,
     validation_id: str,
     index: int,
+    db: Session = Depends(get_db),
 ):
     """Get detailed comparison for a specific record."""
-    summary = _validation_results.get(validation_id)
-    if not summary:
-        raise HTTPException(status_code=404, detail="Validation results not available")
+    validation = db.query(ValidationModel).filter(
+        ValidationModel.id == validation_id,
+        ValidationModel.client_code == client_code,
+    ).first()
 
-    if index < 0 or index >= len(summary.results):
+    if not validation:
+        raise HTTPException(status_code=404, detail="Validation not found")
+
+    # Parse results
+    results = []
+    if validation.results_json:
+        try:
+            results = json.loads(validation.results_json)
+        except json.JSONDecodeError:
+            pass
+
+    if index < 0 or index >= len(results):
         raise HTTPException(status_code=404, detail="Record index out of range")
 
-    result = summary.results[index]
+    result = results[index]
 
     return {
         "index": index,
-        "legacy_id": result.legacy_id,
-        "folio_id": result.folio_id,
-        "hrid": result.hrid,
-        "status": result.status,
-        "local_data": result.local_data,
-        "folio_data": result.folio_data,
-        "differences": result.differences,
-        "error_message": result.error_message,
+        "legacy_id": result.get("legacy_id"),
+        "folio_id": result.get("folio_id"),
+        "hrid": result.get("hrid"),
+        "status": result.get("status"),
+        "local_data": result.get("local_data"),
+        "folio_data": result.get("folio_data"),
+        "differences": result.get("differences", []),
+        "error_message": result.get("error_message"),
+    }
+
+
+@router.delete("/{validation_id}")
+async def delete_validation(
+    client_code: str,
+    validation_id: str,
+    db: Session = Depends(get_db),
+):
+    """Delete a validation record."""
+    validation = db.query(ValidationModel).filter(
+        ValidationModel.id == validation_id,
+        ValidationModel.client_code == client_code,
+    ).first()
+
+    if not validation:
+        raise HTTPException(status_code=404, detail="Validation not found")
+
+    # Don't allow deleting running validations
+    if validation.status == "running":
+        raise HTTPException(status_code=400, detail="Cannot delete a running validation")
+
+    db.delete(validation)
+    db.commit()
+
+    return {
+        "status": "success",
+        "message": f"Validation {validation_id} deleted",
     }
