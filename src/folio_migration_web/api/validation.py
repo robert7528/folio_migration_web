@@ -151,6 +151,16 @@ async def list_validations(
     total = query.count()
     validations = query.order_by(ValidationModel.created_at.desc()).offset(offset).limit(limit).all()
 
+    def get_error_message(v):
+        if v.status == "failed" and v.results_json:
+            try:
+                data = json.loads(v.results_json)
+                if isinstance(data, dict) and "error" in data:
+                    return data["error"]
+            except:
+                pass
+        return None
+
     return {
         "validations": [
             {
@@ -162,6 +172,7 @@ async def list_validations(
                 "total_not_found": v.total_not_found,
                 "total_mismatches": v.total_mismatches,
                 "created_at": v.created_at,
+                "error_message": get_error_message(v),
             }
             for v in validations
         ],
@@ -314,8 +325,12 @@ async def run_validation(
             validation.status = "failed"
             validation.completed_at = datetime.now()
             validation.total_errors = 1
+            # Store error message in results_json
+            validation.results_json = json.dumps({"error": str(e)}, ensure_ascii=False)
             db.commit()
         print(f"Validation error: {e}")
+        import traceback
+        traceback.print_exc()
 
     finally:
         db.close()
