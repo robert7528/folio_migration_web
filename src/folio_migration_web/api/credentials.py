@@ -1,5 +1,6 @@
 """FOLIO credentials management API."""
 
+import json
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -53,6 +54,9 @@ async def set_credentials(
 
     # Also update .env file
     _update_env_file(client_code, credentials.username, credentials.password)
+
+    # Update library_config.json with username
+    _update_library_config_username(client_code, credentials.username)
 
     return {
         "status": "success",
@@ -250,3 +254,34 @@ def _update_env_file(client_code: str, username: str, password: str):
             new_lines.append(f"PASSWORD={password}")
 
         env_path.write_text("\n".join(new_lines), encoding="utf-8")
+
+
+def _update_library_config_username(client_code: str, username: str):
+    """Update the library_config.json with the username."""
+    client_path = settings.get_client_dir(client_code)
+    config_path = client_path / "mapping_files" / "library_config.json"
+
+    if not config_path.exists():
+        return
+
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        if "libraryInformation" in config:
+            config["libraryInformation"]["okapiUsername"] = username
+            config_path.write_text(
+                json.dumps(config, indent=4, ensure_ascii=False),
+                encoding="utf-8"
+            )
+
+            # Also update migration_config.json if it exists
+            migration_config_path = client_path / "mapping_files" / "migration_config.json"
+            if migration_config_path.exists():
+                migration_config = json.loads(migration_config_path.read_text(encoding="utf-8"))
+                if "libraryInformation" in migration_config:
+                    migration_config["libraryInformation"]["okapiUsername"] = username
+                    migration_config_path.write_text(
+                        json.dumps(migration_config, indent=4, ensure_ascii=False),
+                        encoding="utf-8"
+                    )
+    except Exception:
+        pass  # Silently fail - config will work without username in some cases
