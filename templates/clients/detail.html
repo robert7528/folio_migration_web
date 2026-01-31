@@ -66,6 +66,7 @@
     <div class="tabs">
         <button class="tab active" onclick="showTab('overview')">Overview</button>
         <button class="tab" onclick="showTab('credentials')">Credentials</button>
+        <button class="tab" onclick="showTab('tasks')">Tasks</button>
         <button class="tab" onclick="showTab('files')">Files</button>
         <button class="tab" onclick="showTab('config')">Configuration</button>
     </div>
@@ -132,6 +133,42 @@
             </form>
 
             <div id="credentials-result" class="mt-2" style="display: none;"></div>
+        </div>
+    </div>
+
+    <!-- Tasks Tab -->
+    <div id="tab-tasks" class="tab-content" style="display: none;">
+        <div class="grid grid-2">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Migration Tasks</span>
+                    <button class="btn btn-sm btn-primary" onclick="generateCombinedConfig()">Generate Combined Config</button>
+                </div>
+                <div id="tasks-list">Loading...</div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Mapping Files</span>
+                </div>
+                <div id="mappings-list">Loading...</div>
+            </div>
+        </div>
+
+        <!-- Task Config Editor -->
+        <div id="task-config-panel" class="card mt-2" style="display: none;">
+            <div class="card-header">
+                <span class="card-title">Task Configuration: <span id="task-config-name"></span></span>
+                <button class="btn btn-sm btn-secondary" onclick="hideTaskConfig()">Close</button>
+            </div>
+            <div class="form-group">
+                <textarea id="task-config-editor" rows="20" style="font-family: monospace; width: 100%;"></textarea>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary" onclick="saveTaskConfig()">Save Configuration</button>
+                <button class="btn btn-secondary" onclick="validateTaskConfig()">Validate JSON</button>
+            </div>
+            <div id="task-config-result" class="mt-2" style="display: none;"></div>
         </div>
     </div>
 
@@ -228,6 +265,8 @@ async function loadClient() {
         await loadIterations();
         await loadFiles();
         await loadConfigs();
+        await loadTasks();
+        await loadMappings();
 
     } catch (error) {
         document.getElementById('loading').innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
@@ -423,6 +462,232 @@ async function uploadFile(file) {
         await loadFiles();
     } catch (error) {
         statusEl.textContent = `Error: ${error.message}`;
+    }
+}
+
+// Tasks Management
+let tasksData = {};
+let currentTaskType = null;
+
+async function loadTasks() {
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/tasks`);
+        const data = await response.json();
+        tasksData = data.tasks;
+
+        const container = document.getElementById('tasks-list');
+        const taskTypes = Object.keys(data.tasks);
+
+        if (taskTypes.length === 0) {
+            container.innerHTML = '<p class="text-muted">No tasks configured</p>';
+            return;
+        }
+
+        container.innerHTML = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>Task</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${taskTypes.map(taskType => {
+                        const task = data.tasks[taskType];
+                        return `
+                            <tr>
+                                <td>
+                                    <strong>${task.name}</strong><br>
+                                    <small class="text-muted">${task.transformer || '-'}</small>
+                                </td>
+                                <td>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox"
+                                            ${task.enabled ? 'checked' : ''}
+                                            onchange="toggleTask('${taskType}', this.checked)">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-secondary" onclick="showTaskConfig('${taskType}')">
+                                        Configure
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+        `;
+    } catch (error) {
+        console.error('Error loading tasks:', error);
+        document.getElementById('tasks-list').innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
+    }
+}
+
+async function toggleTask(taskType, enabled) {
+    try {
+        const action = enabled ? 'enable' : 'disable';
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/tasks/${taskType}/${action}`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || `Failed to ${action} task`);
+        }
+
+        // Reload tasks to reflect changes
+        await loadTasks();
+    } catch (error) {
+        alert('Error: ' + error.message);
+        await loadTasks(); // Reload to reset checkbox state
+    }
+}
+
+async function showTaskConfig(taskType) {
+    currentTaskType = taskType;
+    const task = tasksData[taskType];
+
+    document.getElementById('task-config-name').textContent = task.name;
+    document.getElementById('task-config-result').style.display = 'none';
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/tasks/${taskType}`);
+        const data = await response.json();
+
+        document.getElementById('task-config-editor').value = JSON.stringify(data.config, null, 2);
+        document.getElementById('task-config-panel').style.display = 'block';
+
+        // Scroll to the config panel
+        document.getElementById('task-config-panel').scrollIntoView({ behavior: 'smooth' });
+    } catch (error) {
+        alert('Error loading task config: ' + error.message);
+    }
+}
+
+function hideTaskConfig() {
+    document.getElementById('task-config-panel').style.display = 'none';
+    currentTaskType = null;
+}
+
+function validateTaskConfig() {
+    const textarea = document.getElementById('task-config-editor');
+    const resultEl = document.getElementById('task-config-result');
+
+    try {
+        JSON.parse(textarea.value);
+        resultEl.className = 'alert alert-success mt-2';
+        resultEl.textContent = 'Valid JSON';
+        resultEl.style.display = 'block';
+    } catch (error) {
+        resultEl.className = 'alert alert-danger mt-2';
+        resultEl.textContent = 'Invalid JSON: ' + error.message;
+        resultEl.style.display = 'block';
+    }
+}
+
+async function saveTaskConfig() {
+    if (!currentTaskType) return;
+
+    const textarea = document.getElementById('task-config-editor');
+    const resultEl = document.getElementById('task-config-result');
+
+    let config;
+    try {
+        config = JSON.parse(textarea.value);
+    } catch (error) {
+        resultEl.className = 'alert alert-danger mt-2';
+        resultEl.textContent = 'Invalid JSON: ' + error.message;
+        resultEl.style.display = 'block';
+        return;
+    }
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/tasks/${currentTaskType}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ config })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to save configuration');
+        }
+
+        resultEl.className = 'alert alert-success mt-2';
+        resultEl.textContent = 'Configuration saved successfully';
+        resultEl.style.display = 'block';
+
+        await loadTasks();
+    } catch (error) {
+        resultEl.className = 'alert alert-danger mt-2';
+        resultEl.textContent = error.message;
+        resultEl.style.display = 'block';
+    }
+}
+
+async function loadMappings() {
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/tasks/mappings/list`);
+        const data = await response.json();
+
+        const container = document.getElementById('mappings-list');
+        if (data.mappings.length === 0) {
+            container.innerHTML = '<p class="text-muted">No mapping files</p>';
+            return;
+        }
+
+        container.innerHTML = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>File</th>
+                        <th>Size</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.mappings.map(mapping => `
+                        <tr>
+                            <td>${mapping.filename}</td>
+                            <td>${formatSize(mapping.size)}</td>
+                            <td>
+                                <a href="${ROOT_PATH}/clients/${clientCode}/config/${mapping.filename}" class="btn btn-sm btn-secondary">Edit</a>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+    } catch (error) {
+        console.error('Error loading mappings:', error);
+        document.getElementById('mappings-list').innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
+    }
+}
+
+async function generateCombinedConfig() {
+    if (!confirm('Generate combined migration_config.json from enabled tasks?\n\nThis will overwrite the existing file if present.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/tasks/generate-combined`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to generate config');
+        }
+
+        const result = await response.json();
+        alert(`Generated ${result.filename}\nEnabled tasks: ${result.enabled_tasks.join(', ') || 'none'}`);
+
+        await loadConfigs();
+    } catch (error) {
+        alert('Error: ' + error.message);
     }
 }
 

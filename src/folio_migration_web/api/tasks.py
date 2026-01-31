@@ -33,7 +33,11 @@ class TaskConfigUpdate(BaseModel):
     config: Optional[dict] = None
 
 
-@router.get("", response_model=List[TaskInfo])
+# ============================================================
+# Static routes MUST come before dynamic /{task_type} routes
+# ============================================================
+
+@router.get("")
 async def list_tasks(
     client_code: str,
     db: Session = Depends(get_db),
@@ -49,21 +53,103 @@ async def list_tasks(
         raise HTTPException(status_code=404, detail="Client directory not found")
 
     config_service = get_config_service(client_path)
-    tasks = []
+    tasks = {}
 
     for task_type, task_def in TASK_DEFINITIONS.items():
         task_config = config_service.get_task_config(task_type)
-        tasks.append(TaskInfo(
-            task_type=task_type,
-            name=task_def["name"],
-            enabled=task_config.get("enabled", False) if task_config else False,
-            has_config=task_config is not None,
-            required_mappings=task_def.get("required_mappings", []),
-            optional_mappings=task_def.get("optional_mappings", []),
-        ))
+        # Get transformer or migrator name
+        handler = task_def.get("transformer") or task_def.get("migrator", "")
+        tasks[task_type] = {
+            "name": task_def["name"],
+            "transformer": handler,
+            "enabled": task_config.get("enabled", False) if task_config else False,
+            "has_config": task_config is not None,
+            "required_mappings": task_def.get("required_mappings", []),
+            "optional_mappings": task_def.get("optional_mappings", []),
+        }
 
-    return tasks
+    return {"tasks": tasks}
 
+
+@router.get("/mappings/list")
+async def list_mapping_files(
+    client_code: str,
+    db: Session = Depends(get_db),
+    project_service: ProjectService = Depends(get_project_service),
+):
+    """List all mapping files for a client."""
+    client = db.query(ClientModel).filter(ClientModel.client_code == client_code).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client '{client_code}' not found")
+
+    client_path = project_service.get_client_path(client_code)
+    if not client_path.exists():
+        raise HTTPException(status_code=404, detail="Client directory not found")
+
+    mapping_dir = client_path / "mapping_files"
+    mappings = []
+
+    if mapping_dir.exists():
+        # Check mappings subdirectory
+        mappings_subdir = mapping_dir / "mappings"
+        if mappings_subdir.exists():
+            for f in mappings_subdir.iterdir():
+                if f.is_file() and f.suffix in [".json", ".tsv", ".csv", ".txt"]:
+                    mappings.append({
+                        "filename": f.name,
+                        "size": f.stat().st_size,
+                    })
+
+        # Also check root mapping_files for any loose mapping files
+        for f in mapping_dir.iterdir():
+            if f.is_file() and f.suffix in [".json", ".tsv", ".csv", ".txt"]:
+                # Skip task config files, library_config, and migration_config
+                if (f.name.endswith("_config.json") or
+                    f.name == "library_config.json" or
+                    f.name == "migration_config.json"):
+                    continue
+                mappings.append({
+                    "filename": f.name,
+                    "size": f.stat().st_size,
+                })
+
+    return {
+        "client_code": client_code,
+        "mappings": sorted(mappings, key=lambda x: x["filename"]),
+    }
+
+
+@router.post("/generate-combined")
+async def generate_combined_config(
+    client_code: str,
+    db: Session = Depends(get_db),
+    project_service: ProjectService = Depends(get_project_service),
+):
+    """Generate the combined migration configuration file."""
+    client = db.query(ClientModel).filter(ClientModel.client_code == client_code).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client '{client_code}' not found")
+
+    client_path = project_service.get_client_path(client_code)
+    if not client_path.exists():
+        raise HTTPException(status_code=404, detail="Client directory not found")
+
+    config_service = get_config_service(client_path)
+    combined = config_service.generate_combined_config()
+
+    enabled_tasks = [t["name"] for t in combined.get("migrationTasks", [])]
+
+    return {
+        "status": "success",
+        "message": "Combined configuration generated",
+        "filename": "migration_config.json",
+        "enabled_tasks": enabled_tasks,
+    }
+
+
+# ============================================================
+# Dynamic /{task_type} routes come AFTER static routes
+# ============================================================
 
 @router.get("/{task_type}")
 async def get_task_config(
@@ -183,55 +269,3 @@ async def disable_task(
     config_service.enable_task(task_type, False)
 
     return {"status": "success", "message": f"Task '{task_type}' disabled"}
-
-
-@router.get("/mappings/list")
-async def list_mapping_files(
-    client_code: str,
-    db: Session = Depends(get_db),
-    project_service: ProjectService = Depends(get_project_service),
-):
-    """List all mapping files for a client."""
-    client = db.query(ClientModel).filter(ClientModel.client_code == client_code).first()
-    if not client:
-        raise HTTPException(status_code=404, detail=f"Client '{client_code}' not found")
-
-    client_path = project_service.get_client_path(client_code)
-    if not client_path.exists():
-        raise HTTPException(status_code=404, detail="Client directory not found")
-
-    config_service = get_config_service(client_path)
-    files = config_service.list_mapping_files()
-
-    return {
-        "client_code": client_code,
-        "files": files,
-    }
-
-
-@router.post("/generate-combined")
-async def generate_combined_config(
-    client_code: str,
-    db: Session = Depends(get_db),
-    project_service: ProjectService = Depends(get_project_service),
-):
-    """Generate the combined migration configuration file."""
-    client = db.query(ClientModel).filter(ClientModel.client_code == client_code).first()
-    if not client:
-        raise HTTPException(status_code=404, detail=f"Client '{client_code}' not found")
-
-    client_path = project_service.get_client_path(client_code)
-    if not client_path.exists():
-        raise HTTPException(status_code=404, detail="Client directory not found")
-
-    config_service = get_config_service(client_path)
-    combined = config_service.generate_combined_config()
-
-    enabled_tasks = [t["name"] for t in combined.get("migrationTasks", [])]
-
-    return {
-        "status": "success",
-        "message": "Combined configuration generated",
-        "output_file": "mapping_files/migration_config.json",
-        "enabled_tasks": enabled_tasks,
-    }
