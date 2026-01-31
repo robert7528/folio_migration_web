@@ -145,7 +145,7 @@ class ClientCredentials(BaseModel):
     """FOLIO credentials model."""
 
     username: str = Field(..., min_length=1)
-    password: str = Field(..., min_length=1)
+    password: Optional[str] = Field(None, min_length=1)  # Optional - can keep existing
 
 
 class ConnectionTestResult(BaseModel):

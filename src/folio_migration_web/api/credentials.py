@@ -25,11 +25,21 @@ async def get_credentials_status(
     if not client:
         raise HTTPException(status_code=404, detail=f"Client '{client_code}' not found")
 
+    # Decrypt username to show on the form (password is never returned)
+    username = None
+    if client.credentials_set and client.encrypted_username:
+        try:
+            manager = get_credential_manager()
+            username = manager.decrypt(client.encrypted_username)
+        except Exception:
+            pass
+
     return {
         "client_code": client_code,
         "credentials_set": client.credentials_set,
         "has_username": bool(client.encrypted_username),
         "has_password": bool(client.encrypted_password),
+        "username": username,  # Return decrypted username
     }
 
 
@@ -44,16 +54,26 @@ async def set_credentials(
     if not client:
         raise HTTPException(status_code=404, detail=f"Client '{client_code}' not found")
 
-    # Encrypt credentials
     manager = get_credential_manager()
-    client.encrypted_username = manager.encrypt(credentials.username)
-    client.encrypted_password = manager.encrypt(credentials.password)
-    client.credentials_set = True
 
+    # Always update username
+    client.encrypted_username = manager.encrypt(credentials.username)
+
+    # Only update password if provided
+    if credentials.password:
+        client.encrypted_password = manager.encrypt(credentials.password)
+        password_to_save = credentials.password
+    elif client.encrypted_password:
+        # Keep existing password
+        password_to_save = manager.decrypt(client.encrypted_password)
+    else:
+        raise HTTPException(status_code=400, detail="Password is required")
+
+    client.credentials_set = True
     db.commit()
 
     # Also update .env file
-    _update_env_file(client_code, credentials.username, credentials.password)
+    _update_env_file(client_code, credentials.username, password_to_save)
 
     # Update library_config.json with username
     _update_library_config_username(client_code, credentials.username)
