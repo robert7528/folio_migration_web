@@ -357,8 +357,8 @@ async function loadDeletions() {
                 </td>
                 <td>${new Date(d.created_at).toLocaleString('zh-TW')}</td>
                 <td class="flex gap-1">
-                    ${d.failed_count > 0 ? `
-                        <button class="btn btn-sm btn-secondary" onclick="showFailed('${d.id}')">View Failed</button>
+                    ${(d.failed_count > 0 || (d.total_records - d.deleted_count) > 0) && d.status !== 'running' ? `
+                        <button class="btn btn-sm btn-secondary" onclick="showFailed('${d.id}')">View Details</button>
                     ` : ''}
                     ${d.status !== 'running' ? `
                         <button class="btn btn-sm btn-danger" onclick="deleteDeletionRecord('${d.id}')">Delete</button>
@@ -377,14 +377,19 @@ async function showFailed(deletionId) {
         const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/deletion/failed/${deletionId}`);
         const data = await response.json();
 
-        let message = `Failed Records (${data.failed_count}):\n\n`;
+        if (data.failed_records.length === 0) {
+            alert('No detailed records available.');
+            return;
+        }
+
+        let message = `Deletion Details (${data.failed_records.length} records):\n\n`;
         data.failed_records.forEach((record, i) => {
-            message += `${i + 1}. ID: ${record.id}\n   Error: ${record.error}\n\n`;
+            message += `${i + 1}. ID: ${record.id}\n   Status: ${record.error}\n\n`;
         });
 
         alert(message);
     } catch (error) {
-        alert('Error loading failed records: ' + error.message);
+        alert('Error loading details: ' + error.message);
     }
 }
 
