@@ -104,6 +104,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function loadSummary() {
     try {
         const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/validation/status/${validationId}`);
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Validation not found');
+        }
+
         const status = await response.json();
 
         document.getElementById('validation-status').textContent = status.status;
@@ -138,6 +144,16 @@ async function loadSummary() {
         `;
     } catch (error) {
         console.error('Error loading summary:', error);
+        document.getElementById('validation-status').textContent = 'Not Available';
+        document.getElementById('validation-status').className = 'badge badge-danger';
+        document.getElementById('summary-content').innerHTML = `
+            <div class="alert alert-warning">
+                <p><strong>Validation results not available</strong></p>
+                <p>The validation data may have been cleared due to server restart. Please run a new validation.</p>
+                <p><small>Error: ${error.message}</small></p>
+                <a href="${ROOT_PATH}/clients/${clientCode}/validation" class="btn btn-primary mt-1">Start New Validation</a>
+            </div>
+        `;
     }
 }
 
@@ -152,9 +168,19 @@ async function loadResults() {
         }
 
         const response = await fetch(url);
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to load results');
+        }
+
         const data = await response.json();
 
-        totalResults = data.summary.filtered_count;
+        if (!data.summary) {
+            throw new Error('Validation results not available. The server may have restarted.');
+        }
+
+        totalResults = data.summary.filtered_count || 0;
         updatePagination();
 
         if (data.results.length === 0) {
