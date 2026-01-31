@@ -136,7 +136,7 @@ async def upload_file(
 
     Args:
         file: The file to upload
-        target_folder: Target subfolder (instances, holdings, items, users, loans, courses)
+        target_folder: Target subfolder (instances, holdings, items, users, loans, courses, authorities, orders, organizations, requests, reserves, feefines)
         iteration: Iteration name (defaults to {client_code}_migration)
     """
     client_path = project_service.get_client_path(client_code)
