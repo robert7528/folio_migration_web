@@ -102,7 +102,11 @@ class FolioDeletionClient(FolioApiClient):
             if response.status_code == 204:
                 return {"status": "deleted", "id": record_id}
             elif response.status_code == 404:
-                return {"status": "not_found", "id": record_id}
+                return {
+                    "status": "not_found",
+                    "id": record_id,
+                    "error": f"HTTP 404: Record not found at {endpoint}"
+                }
             else:
                 error_msg = response.text
                 try:
@@ -215,6 +219,11 @@ class DeletionService:
                 elif result["status"] == "not_found":
                     summary.not_found_count += 1
                     summary.skipped_count += 1
+                    # Track not_found records for debugging
+                    summary.failed_ids.append({
+                        "id": record_id,
+                        "error": result.get("error", "Not found in FOLIO")
+                    })
                 elif result["status"] == "skipped":
                     summary.skipped_count += 1
                 else:
