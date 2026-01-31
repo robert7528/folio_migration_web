@@ -152,10 +152,22 @@ class ExecutionService:
             if not execution:
                 return
 
-            # Build command
-            # Use the folio-migration-tools command
+            # Find the project's Python executable
+            # Each project has its own .venv with folio_migration_tools installed
+            project_python = Path(base_folder) / ".venv" / "bin" / "python"
+            if not project_python.exists():
+                # Try Windows path
+                project_python = Path(base_folder) / ".venv" / "Scripts" / "python.exe"
+
+            if not project_python.exists():
+                raise FileNotFoundError(
+                    f"Project virtual environment not found at {base_folder}/.venv. "
+                    "Please ensure folio_migration_tools is installed in the project."
+                )
+
+            # Build command using project's Python
             cmd = [
-                sys.executable, "-m", "folio_migration_tools",
+                str(project_python), "-m", "folio_migration_tools",
                 str(config_path),
                 task_name,
                 "--base_folder_path", base_folder,
