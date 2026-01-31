@@ -62,3 +62,13 @@ def get_credential_manager() -> CredentialManager:
     if _manager is None:
         _manager = CredentialManager()
     return _manager
+
+
+def encrypt_value(plaintext: str) -> str:
+    """Encrypt a plaintext string."""
+    return get_credential_manager().encrypt(plaintext)
+
+
+def decrypt_value(ciphertext: str) -> str:
+    """Decrypt a ciphertext string."""
+    return get_credential_manager().decrypt(ciphertext)
