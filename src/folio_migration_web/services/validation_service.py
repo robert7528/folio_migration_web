@@ -264,9 +264,9 @@ class ValidationService:
     ) -> ValidationSummary:
         """Validate an execution's output against FOLIO data."""
         # Determine record type from task type
-        record_type = self._get_record_type(execution.task_type)
+        record_type = self._get_record_type(execution.task_type, execution.task_name)
         if not record_type:
-            raise ValueError(f"Unsupported task type for validation: {execution.task_type}")
+            raise ValueError(f"Unsupported task type for validation: {execution.task_type} ({execution.task_name})")
 
         # Find output file
         output_file = self._find_output_file(execution)
@@ -309,7 +309,7 @@ class ValidationService:
 
         return summary
 
-    def _get_record_type(self, task_type: str) -> Optional[RecordType]:
+    def _get_record_type(self, task_type: str, task_name: str = "") -> Optional[RecordType]:
         """Map task type to record type."""
         mapping = {
             "BibsTransformer": RecordType.INSTANCES,
@@ -318,7 +318,24 @@ class ValidationService:
             "UserTransformer": RecordType.USERS,
             "BibsAndItemsTransformer": RecordType.INSTANCES,
         }
-        return mapping.get(task_type)
+
+        # Direct mapping
+        if task_type in mapping:
+            return mapping.get(task_type)
+
+        # For BatchPoster, determine type from task_name
+        if task_type == "BatchPoster":
+            task_name_lower = task_name.lower()
+            if "instance" in task_name_lower:
+                return RecordType.INSTANCES
+            elif "holding" in task_name_lower:
+                return RecordType.HOLDINGS
+            elif "item" in task_name_lower:
+                return RecordType.ITEMS
+            elif "user" in task_name_lower:
+                return RecordType.USERS
+
+        return None
 
     def _find_output_file(self, execution: Execution) -> Optional[Path]:
         """Find the output JSON file for an execution."""

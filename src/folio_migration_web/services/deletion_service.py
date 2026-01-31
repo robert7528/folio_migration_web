@@ -181,9 +181,9 @@ class DeletionService:
             cascade: If True, delete dependent records (holdings, items) first
         """
         # Determine record type from task type
-        record_type = self._get_record_type(execution.task_type)
+        record_type = self._get_record_type(execution.task_type, execution.task_name)
         if not record_type:
-            raise ValueError(f"Unsupported task type for deletion: {execution.task_type}")
+            raise ValueError(f"Unsupported task type for deletion: {execution.task_type} ({execution.task_name})")
 
         # Find output file
         output_file = self._find_output_file(execution)
@@ -299,7 +299,7 @@ class DeletionService:
 
         return {"status": "skipped", "error": f"Unsupported record type: {record_type}"}
 
-    def _get_record_type(self, task_type: str) -> Optional[RecordType]:
+    def _get_record_type(self, task_type: str, task_name: str = "") -> Optional[RecordType]:
         """Map task type to record type."""
         mapping = {
             "BibsTransformer": RecordType.INSTANCES,
@@ -308,7 +308,24 @@ class DeletionService:
             "UserTransformer": RecordType.USERS,
             "BibsAndItemsTransformer": RecordType.INSTANCES,
         }
-        return mapping.get(task_type)
+
+        # Direct mapping
+        if task_type in mapping:
+            return mapping.get(task_type)
+
+        # For BatchPoster, determine type from task_name
+        if task_type == "BatchPoster":
+            task_name_lower = task_name.lower()
+            if "instance" in task_name_lower:
+                return RecordType.INSTANCES
+            elif "holding" in task_name_lower:
+                return RecordType.HOLDINGS
+            elif "item" in task_name_lower:
+                return RecordType.ITEMS
+            elif "user" in task_name_lower:
+                return RecordType.USERS
+
+        return None
 
     def _find_output_file(self, execution: Execution) -> Optional[Path]:
         """Find the output JSON file for an execution."""
@@ -366,9 +383,9 @@ class DeletionService:
         execution: Execution,
     ) -> Dict[str, Any]:
         """Preview what will be deleted without actually deleting."""
-        record_type = self._get_record_type(execution.task_type)
+        record_type = self._get_record_type(execution.task_type, execution.task_name)
         if not record_type:
-            raise ValueError(f"Unsupported task type: {execution.task_type}")
+            raise ValueError(f"Unsupported task type: {execution.task_type} ({execution.task_name})")
 
         output_file = self._find_output_file(execution)
         if not output_file:
