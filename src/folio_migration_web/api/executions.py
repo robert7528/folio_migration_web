@@ -297,23 +297,36 @@ async def get_execution_results(
         }
 
     client_path = project_service.get_client_path(client_code)
+    iteration_path = client_path / "iterations" / execution.iteration
 
-    # Find result files
-    results_base = client_path / "iterations" / execution.iteration / "results"
     output_files = []
 
-    if results_base.exists():
-        # Search for task output folder
-        for obj_folder in results_base.iterdir():
-            task_folder = obj_folder / execution.task_name
-            if task_folder.exists():
-                for f in task_folder.iterdir():
-                    if f.is_file():
-                        output_files.append({
-                            "name": f.name,
-                            "path": str(f.relative_to(client_path)),
-                            "size": f.stat().st_size,
-                        })
+    # Find result files in results folder
+    results_path = iteration_path / "results"
+    if results_path.exists():
+        for f in results_path.iterdir():
+            if f.is_file() and execution.task_name in f.name:
+                output_files.append({
+                    "name": f.name,
+                    "path": str(f.relative_to(client_path)),
+                    "size": f.stat().st_size,
+                    "type": "result",
+                })
+
+    # Find report files in reports folder
+    reports_path = iteration_path / "reports"
+    if reports_path.exists():
+        for f in reports_path.iterdir():
+            if f.is_file() and execution.task_name in f.name:
+                output_files.append({
+                    "name": f.name,
+                    "path": str(f.relative_to(client_path)),
+                    "size": f.stat().st_size,
+                    "type": "report",
+                })
+
+    # Sort by type (reports first) then name
+    output_files.sort(key=lambda x: (x["type"] != "report", x["name"]))
 
     # Parse result summary if available
     summary = None
