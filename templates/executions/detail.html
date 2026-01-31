@@ -1,0 +1,377 @@
+{% extends "base.html" %}
+
+{% block title %}Execution #{{ execution_id }} - {{ client_code }}{% endblock %}
+
+{% block content %}
+<div class="flex-between mb-2">
+    <h1>Execution #{{ execution_id }}</h1>
+    <div class="flex gap-1">
+        <a href="{{ root_path }}/clients/{{ client_code }}/execute" class="btn btn-primary">New Execution</a>
+        <a href="{{ root_path }}/clients/{{ client_code }}/executions" class="btn btn-secondary">History</a>
+        <a href="{{ root_path }}/clients/{{ client_code }}" class="btn btn-secondary">Back to Project</a>
+    </div>
+</div>
+
+<div id="loading" class="card text-center">
+    <span class="spinner"></span> Loading...
+</div>
+
+<div id="content" style="display: none;">
+    <!-- Status Overview -->
+    <div class="grid grid-2">
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">Execution Details</span>
+                <span id="status-badge" class="badge"></span>
+            </div>
+            <table>
+                <tr><td><strong>Task Name</strong></td><td id="task-name"></td></tr>
+                <tr><td><strong>Task Type</strong></td><td id="task-type"></td></tr>
+                <tr><td><strong>Iteration</strong></td><td id="iteration"></td></tr>
+                <tr><td><strong>Started</strong></td><td id="started-at"></td></tr>
+                <tr><td><strong>Completed</strong></td><td id="completed-at"></td></tr>
+                <tr><td><strong>Duration</strong></td><td id="duration"></td></tr>
+            </table>
+
+            <div id="error-message" class="alert alert-danger mt-2" style="display: none;"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">Statistics</span>
+            </div>
+
+            <div class="progress-container mb-2">
+                <div class="progress-bar" style="height: 20px;">
+                    <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+                </div>
+                <div class="text-center mt-1">
+                    <span id="progress-text">0%</span>
+                </div>
+            </div>
+
+            <div class="grid grid-2" style="gap: 1rem;">
+                <div class="stat-box">
+                    <div class="stat-value" id="total-records">0</div>
+                    <div class="stat-label">Total Records</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="processed-records">0</div>
+                    <div class="stat-label">Processed</div>
+                </div>
+                <div class="stat-box stat-success">
+                    <div class="stat-value" id="success-count">0</div>
+                    <div class="stat-label">Success</div>
+                </div>
+                <div class="stat-box stat-error">
+                    <div class="stat-value" id="error-count">0</div>
+                    <div class="stat-label">Errors</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Output Files -->
+    <div class="card mt-2" id="output-files-card" style="display: none;">
+        <div class="card-header">
+            <span class="card-title">Output Files</span>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>File Name</th>
+                        <th>Size</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="output-files">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Result Summary -->
+    <div class="card mt-2" id="summary-card" style="display: none;">
+        <div class="card-header">
+            <span class="card-title">Result Summary</span>
+            <button class="btn btn-sm btn-secondary" onclick="toggleSummary()">Toggle</button>
+        </div>
+        <pre id="summary-content" style="max-height: 300px; overflow: auto;"></pre>
+    </div>
+
+    <!-- Execution Logs -->
+    <div class="card mt-2">
+        <div class="card-header">
+            <span class="card-title">Execution Logs</span>
+            <div class="flex gap-1">
+                <a href="#" class="btn btn-sm btn-secondary" id="download-log-btn">Download Log</a>
+            </div>
+        </div>
+        <div class="log-viewer">
+            <pre id="log-output">Loading...</pre>
+        </div>
+    </div>
+</div>
+
+<style>
+.stat-box {
+    background-color: var(--bg-color);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.stat-label {
+    font-size: 0.875rem;
+    color: var(--text-light);
+}
+
+.stat-success .stat-value {
+    color: var(--success-color);
+}
+
+.stat-error .stat-value {
+    color: var(--danger-color);
+}
+
+.log-viewer {
+    background-color: #1e1e1e;
+    border-radius: 0.375rem;
+    padding: 1rem;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.log-viewer pre {
+    color: #d4d4d4;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.8rem;
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.log-line-info { color: #4fc1ff; }
+.log-line-warn { color: #dcdcaa; }
+.log-line-error { color: #f14c4c; }
+.log-line-success { color: #4ec9b0; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const clientCode = '{{ client_code }}';
+const executionId = {{ execution_id }};
+let execution = null;
+let pollInterval = null;
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadExecution();
+    await loadLogs();
+    await loadResults();
+});
+
+async function loadExecution() {
+    try {
+        const response = await fetch(
+            `${ROOT_PATH}/api/clients/${clientCode}/executions/${executionId}`
+        );
+
+        if (!response.ok) {
+            throw new Error('Execution not found');
+        }
+
+        execution = await response.json();
+        renderExecution();
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+
+        // Poll if still running
+        if (execution.status === 'running' || execution.status === 'pending') {
+            pollInterval = setInterval(async () => {
+                await loadExecution();
+                await loadLogs();
+            }, 2000);
+        }
+
+    } catch (error) {
+        document.getElementById('loading').innerHTML =
+            `<div class="alert alert-danger">${error.message}</div>`;
+    }
+}
+
+function renderExecution() {
+    // Status badge
+    const badge = document.getElementById('status-badge');
+    badge.textContent = execution.status;
+    badge.className = `badge badge-${getStatusClass(execution.status)}`;
+
+    // Details
+    document.getElementById('task-name').textContent = execution.task_name;
+    document.getElementById('task-type').textContent = execution.task_type;
+    document.getElementById('iteration').textContent = execution.iteration;
+    document.getElementById('started-at').textContent =
+        execution.started_at ? formatDate(execution.started_at) : '-';
+    document.getElementById('completed-at').textContent =
+        execution.completed_at ? formatDate(execution.completed_at) : '-';
+    document.getElementById('duration').textContent =
+        execution.duration_seconds ? formatDuration(execution.duration_seconds) : '-';
+
+    // Error message
+    if (execution.error_message) {
+        document.getElementById('error-message').textContent = execution.error_message;
+        document.getElementById('error-message').style.display = 'block';
+    }
+
+    // Statistics
+    document.getElementById('total-records').textContent = execution.total_records;
+    document.getElementById('processed-records').textContent = execution.processed_records;
+    document.getElementById('success-count').textContent = execution.success_count;
+    document.getElementById('error-count').textContent = execution.error_count;
+
+    // Progress
+    const progress = execution.progress_percent || 0;
+    document.getElementById('progress-fill').style.width = `${progress}%`;
+    document.getElementById('progress-text').textContent = `${progress.toFixed(1)}%`;
+
+    // Stop polling if completed
+    if (pollInterval && ['completed', 'failed', 'cancelled'].includes(execution.status)) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+        loadResults();
+    }
+}
+
+async function loadLogs() {
+    try {
+        const response = await fetch(
+            `${ROOT_PATH}/api/clients/${clientCode}/executions/${executionId}/logs`
+        );
+        const data = await response.json();
+
+        const logOutput = document.getElementById('log-output');
+        if (data.lines.length === 0) {
+            logOutput.textContent = 'No logs available';
+        } else {
+            logOutput.innerHTML = data.lines.map(line => colorLogLine(line)).join('\n');
+        }
+
+        // Update download link
+        if (execution && execution.log_file) {
+            document.getElementById('download-log-btn').href =
+                `${ROOT_PATH}/api/clients/${clientCode}/files/${encodeURIComponent(execution.log_file)}`;
+        }
+    } catch (error) {
+        console.error('Error loading logs:', error);
+    }
+}
+
+async function loadResults() {
+    if (!execution || !['completed', 'failed'].includes(execution.status)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(
+            `${ROOT_PATH}/api/clients/${clientCode}/executions/${executionId}/results`
+        );
+        const data = await response.json();
+
+        // Output files
+        if (data.output_files && data.output_files.length > 0) {
+            document.getElementById('output-files-card').style.display = 'block';
+            document.getElementById('output-files').innerHTML = data.output_files.map(file => `
+                <tr>
+                    <td>${file.name}</td>
+                    <td>${formatSize(file.size)}</td>
+                    <td>
+                        <a href="${ROOT_PATH}/api/clients/${clientCode}/files/${encodeURIComponent(file.path)}"
+                           class="btn btn-sm btn-secondary">Download</a>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Summary
+        if (data.summary) {
+            document.getElementById('summary-card').style.display = 'block';
+            document.getElementById('summary-content').textContent =
+                JSON.stringify(data.summary, null, 2);
+        }
+    } catch (error) {
+        console.error('Error loading results:', error);
+    }
+}
+
+function colorLogLine(line) {
+    const escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    if (line.includes('ERROR') || line.includes('CRITICAL') || line.includes('Failed')) {
+        return `<span class="log-line-error">${escaped}</span>`;
+    }
+    if (line.includes('WARNING') || line.includes('WARN')) {
+        return `<span class="log-line-warn">${escaped}</span>`;
+    }
+    if (line.includes('SUCCESS') || line.includes('Completed') || line.includes('Created')) {
+        return `<span class="log-line-success">${escaped}</span>`;
+    }
+    if (line.includes('INFO')) {
+        return `<span class="log-line-info">${escaped}</span>`;
+    }
+    return escaped;
+}
+
+function toggleSummary() {
+    const content = document.getElementById('summary-content');
+    content.style.display = content.style.display === 'none' ? 'block' : 'none';
+}
+
+function getStatusClass(status) {
+    switch (status) {
+        case 'completed': return 'success';
+        case 'running': return 'info';
+        case 'pending': return 'warning';
+        case 'failed': return 'danger';
+        case 'cancelled': return 'warning';
+        default: return 'info';
+    }
+}
+
+function formatDuration(seconds) {
+    if (seconds < 60) {
+        return `${seconds.toFixed(1)}s`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    if (minutes < 60) {
+        return `${minutes}m ${secs}s`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours}h ${mins}m ${secs}s`;
+}
+
+function formatDate(dateStr) {
+    const date = new Date(dateStr);
+    return date.toLocaleString('zh-TW');
+}
+
+function formatSize(bytes) {
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let i = 0;
+    while (bytes >= 1024 && i < units.length - 1) {
+        bytes /= 1024;
+        i++;
+    }
+    return `${bytes.toFixed(1)} ${units[i]}`;
+}
+</script>
+{% endblock %}

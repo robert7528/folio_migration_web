@@ -132,6 +132,10 @@ body {
     color: white;
 }
 
+.btn-success:hover {
+    background-color: #047857;
+}
+
 .btn-danger {
     background-color: var(--danger-color);
     color: white;

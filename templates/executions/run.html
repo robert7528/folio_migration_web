@@ -1,0 +1,485 @@
+{% extends "base.html" %}
+
+{% block title %}Execute Tasks - {{ client_code }}{% endblock %}
+
+{% block content %}
+<div class="flex-between mb-2">
+    <h1>Execute Migration Tasks</h1>
+    <div class="flex gap-1">
+        <a href="{{ root_path }}/clients/{{ client_code }}/executions" class="btn btn-secondary">Execution History</a>
+        <a href="{{ root_path }}/clients/{{ client_code }}" class="btn btn-secondary">Back to Project</a>
+    </div>
+</div>
+
+<div class="grid grid-2">
+    <!-- Task Selection -->
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Select Task to Execute</span>
+        </div>
+
+        <div class="form-group">
+            <label for="iteration">Iteration</label>
+            <select id="iteration">
+                <option value="">Loading...</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="task-select">Available Tasks</label>
+            <select id="task-select">
+                <option value="">Loading...</option>
+            </select>
+            <small>Tasks from migration_config.json</small>
+        </div>
+
+        <div id="task-info" class="mt-2" style="display: none;">
+            <h4>Task Details</h4>
+            <table>
+                <tr><td><strong>Name</strong></td><td id="task-name"></td></tr>
+                <tr><td><strong>Type</strong></td><td id="task-type"></td></tr>
+                <tr><td><strong>Input Files</strong></td><td id="task-files"></td></tr>
+            </table>
+        </div>
+
+        <div class="form-group mt-2">
+            <label>
+                <input type="checkbox" id="use-stored-password" checked>
+                Use stored FOLIO credentials
+            </label>
+        </div>
+
+        <div id="password-input" class="form-group" style="display: none;">
+            <label for="password">FOLIO Password</label>
+            <input type="password" id="password" placeholder="Enter FOLIO password">
+        </div>
+
+        <div class="form-actions">
+            <button class="btn btn-primary btn-lg" onclick="startExecution()" id="start-btn">
+                Start Execution
+            </button>
+        </div>
+
+        <div id="start-result" class="mt-2" style="display: none;"></div>
+    </div>
+
+    <!-- Execution Status -->
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Execution Status</span>
+            <span id="status-badge" class="badge" style="display: none;"></span>
+        </div>
+
+        <div id="no-execution" class="text-center text-muted">
+            <p>No task running</p>
+            <p>Select a task and click "Start Execution"</p>
+        </div>
+
+        <div id="execution-status" style="display: none;">
+            <div class="progress-container mb-2">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+                </div>
+                <div class="flex-between mt-1">
+                    <span id="progress-text">0%</span>
+                    <span id="record-count">0 / 0 records</span>
+                </div>
+            </div>
+
+            <table>
+                <tr><td><strong>Task</strong></td><td id="exec-task"></td></tr>
+                <tr><td><strong>Status</strong></td><td id="exec-status"></td></tr>
+                <tr><td><strong>Success</strong></td><td id="exec-success" class="text-success">0</td></tr>
+                <tr><td><strong>Errors</strong></td><td id="exec-errors" class="text-danger">0</td></tr>
+                <tr><td><strong>Duration</strong></td><td id="exec-duration">-</td></tr>
+            </table>
+
+            <div class="form-actions mt-2">
+                <button class="btn btn-danger" onclick="cancelExecution()" id="cancel-btn" style="display: none;">
+                    Cancel
+                </button>
+                <a href="#" class="btn btn-primary" id="view-results-btn" style="display: none;">
+                    View Results
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Live Logs -->
+<div class="card mt-2">
+    <div class="card-header">
+        <span class="card-title">Execution Logs</span>
+        <div class="flex gap-1">
+            <label>
+                <input type="checkbox" id="auto-scroll" checked> Auto-scroll
+            </label>
+            <button class="btn btn-sm btn-secondary" onclick="clearLogs()">Clear</button>
+        </div>
+    </div>
+    <div id="log-container" class="log-viewer">
+        <pre id="log-output">Waiting for execution...</pre>
+    </div>
+</div>
+
+<style>
+.log-viewer {
+    background-color: #1e1e1e;
+    border-radius: 0.375rem;
+    padding: 1rem;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.log-viewer pre {
+    color: #d4d4d4;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.8rem;
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.log-line-info { color: #4fc1ff; }
+.log-line-warn { color: #dcdcaa; }
+.log-line-error { color: #f14c4c; }
+.log-line-success { color: #4ec9b0; }
+
+.text-success { color: var(--success-color); }
+.text-danger { color: var(--danger-color); }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const clientCode = '{{ client_code }}';
+let currentExecutionId = null;
+let logPollInterval = null;
+let statusPollInterval = null;
+let logOffset = 0;
+let availableTasks = [];
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadIterations();
+    await loadAvailableTasks();
+    setupEventListeners();
+});
+
+function setupEventListeners() {
+    document.getElementById('task-select').addEventListener('change', showTaskInfo);
+    document.getElementById('use-stored-password').addEventListener('change', togglePasswordInput);
+}
+
+async function loadIterations() {
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/iterations`);
+        const data = await response.json();
+
+        const select = document.getElementById('iteration');
+        if (data.iterations.length === 0) {
+            select.innerHTML = `<option value="${clientCode}_migration">${clientCode}_migration</option>`;
+        } else {
+            select.innerHTML = data.iterations.map(iter =>
+                `<option value="${iter}">${iter}</option>`
+            ).join('');
+        }
+    } catch (error) {
+        console.error('Error loading iterations:', error);
+    }
+}
+
+async function loadAvailableTasks() {
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/executions/tasks`);
+        const data = await response.json();
+        availableTasks = data.tasks;
+
+        const select = document.getElementById('task-select');
+        if (availableTasks.length === 0) {
+            select.innerHTML = '<option value="">No tasks configured - Generate Combined Config first</option>';
+        } else {
+            select.innerHTML = '<option value="">Select a task...</option>' +
+                availableTasks.map(task =>
+                    `<option value="${task.name}">${task.name} (${task.type})</option>`
+                ).join('');
+        }
+    } catch (error) {
+        console.error('Error loading tasks:', error);
+        document.getElementById('task-select').innerHTML =
+            '<option value="">Error loading tasks</option>';
+    }
+}
+
+function showTaskInfo() {
+    const taskName = document.getElementById('task-select').value;
+    const infoEl = document.getElementById('task-info');
+
+    if (!taskName) {
+        infoEl.style.display = 'none';
+        return;
+    }
+
+    const task = availableTasks.find(t => t.name === taskName);
+    if (task) {
+        document.getElementById('task-name').textContent = task.name;
+        document.getElementById('task-type').textContent = task.type;
+        document.getElementById('task-files').textContent =
+            task.files.map(f => f.file_name || f.fileName).join(', ') || 'N/A';
+        infoEl.style.display = 'block';
+    }
+}
+
+function togglePasswordInput() {
+    const useStored = document.getElementById('use-stored-password').checked;
+    document.getElementById('password-input').style.display = useStored ? 'none' : 'block';
+}
+
+async function startExecution() {
+    const taskName = document.getElementById('task-select').value;
+    const iteration = document.getElementById('iteration').value;
+    const useStoredPassword = document.getElementById('use-stored-password').checked;
+    const password = document.getElementById('password').value;
+
+    if (!taskName) {
+        alert('Please select a task');
+        return;
+    }
+
+    if (!iteration) {
+        alert('Please select an iteration');
+        return;
+    }
+
+    if (!useStoredPassword && !password) {
+        alert('Please enter a password');
+        return;
+    }
+
+    const startBtn = document.getElementById('start-btn');
+    startBtn.disabled = true;
+    startBtn.textContent = 'Starting...';
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/executions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                task_name: taskName,
+                iteration: iteration,
+                use_stored_password: useStoredPassword,
+                password: useStoredPassword ? null : password,
+            }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to start execution');
+        }
+
+        const execution = await response.json();
+        currentExecutionId = execution.id;
+
+        // Show execution status
+        document.getElementById('no-execution').style.display = 'none';
+        document.getElementById('execution-status').style.display = 'block';
+        document.getElementById('cancel-btn').style.display = 'inline-block';
+        document.getElementById('view-results-btn').style.display = 'none';
+
+        document.getElementById('exec-task').textContent = execution.task_name;
+        updateExecutionStatus(execution);
+
+        // Clear and start log polling
+        clearLogs();
+        logOffset = 0;
+        startPolling();
+
+        showResult('start-result', true, 'Execution started');
+
+    } catch (error) {
+        showResult('start-result', false, error.message);
+    } finally {
+        startBtn.disabled = false;
+        startBtn.textContent = 'Start Execution';
+    }
+}
+
+function startPolling() {
+    // Poll status every 2 seconds
+    statusPollInterval = setInterval(pollStatus, 2000);
+    // Poll logs every 1 second
+    logPollInterval = setInterval(pollLogs, 1000);
+}
+
+function stopPolling() {
+    if (statusPollInterval) {
+        clearInterval(statusPollInterval);
+        statusPollInterval = null;
+    }
+    if (logPollInterval) {
+        clearInterval(logPollInterval);
+        logPollInterval = null;
+    }
+}
+
+async function pollStatus() {
+    if (!currentExecutionId) return;
+
+    try {
+        const response = await fetch(
+            `${ROOT_PATH}/api/clients/${clientCode}/executions/${currentExecutionId}`
+        );
+        const execution = await response.json();
+        updateExecutionStatus(execution);
+
+        // Stop polling if completed
+        if (['completed', 'failed', 'cancelled'].includes(execution.status)) {
+            stopPolling();
+            document.getElementById('cancel-btn').style.display = 'none';
+            document.getElementById('view-results-btn').style.display = 'inline-block';
+            document.getElementById('view-results-btn').href =
+                `${ROOT_PATH}/clients/${clientCode}/executions/${currentExecutionId}`;
+        }
+    } catch (error) {
+        console.error('Error polling status:', error);
+    }
+}
+
+async function pollLogs() {
+    if (!currentExecutionId) return;
+
+    try {
+        const response = await fetch(
+            `${ROOT_PATH}/api/clients/${clientCode}/executions/${currentExecutionId}/logs?offset=${logOffset}`
+        );
+        const data = await response.json();
+
+        if (data.lines.length > 0) {
+            appendLogs(data.lines);
+            logOffset = data.total;
+        }
+    } catch (error) {
+        console.error('Error polling logs:', error);
+    }
+}
+
+function updateExecutionStatus(execution) {
+    const statusBadge = document.getElementById('status-badge');
+    statusBadge.textContent = execution.status;
+    statusBadge.className = `badge badge-${getStatusClass(execution.status)}`;
+    statusBadge.style.display = 'inline-block';
+
+    document.getElementById('exec-status').textContent = execution.status;
+    document.getElementById('exec-success').textContent = execution.success_count;
+    document.getElementById('exec-errors').textContent = execution.error_count;
+
+    // Progress
+    const progress = execution.progress_percent || 0;
+    document.getElementById('progress-fill').style.width = `${progress}%`;
+    document.getElementById('progress-text').textContent = `${progress.toFixed(1)}%`;
+    document.getElementById('record-count').textContent =
+        `${execution.processed_records} / ${execution.total_records} records`;
+
+    // Duration
+    if (execution.duration_seconds) {
+        document.getElementById('exec-duration').textContent =
+            formatDuration(execution.duration_seconds);
+    } else if (execution.started_at) {
+        const start = new Date(execution.started_at);
+        const now = new Date();
+        const seconds = (now - start) / 1000;
+        document.getElementById('exec-duration').textContent = formatDuration(seconds);
+    }
+}
+
+function appendLogs(lines) {
+    const logOutput = document.getElementById('log-output');
+    const container = document.getElementById('log-container');
+
+    for (const line of lines) {
+        const coloredLine = colorLogLine(line);
+        if (logOutput.textContent === 'Waiting for execution...') {
+            logOutput.innerHTML = coloredLine;
+        } else {
+            logOutput.innerHTML += '\n' + coloredLine;
+        }
+    }
+
+    // Auto-scroll
+    if (document.getElementById('auto-scroll').checked) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+function colorLogLine(line) {
+    // Escape HTML
+    const escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    if (line.includes('ERROR') || line.includes('CRITICAL') || line.includes('Failed')) {
+        return `<span class="log-line-error">${escaped}</span>`;
+    }
+    if (line.includes('WARNING') || line.includes('WARN')) {
+        return `<span class="log-line-warn">${escaped}</span>`;
+    }
+    if (line.includes('SUCCESS') || line.includes('Completed') || line.includes('Created')) {
+        return `<span class="log-line-success">${escaped}</span>`;
+    }
+    if (line.includes('INFO')) {
+        return `<span class="log-line-info">${escaped}</span>`;
+    }
+    return escaped;
+}
+
+function clearLogs() {
+    document.getElementById('log-output').textContent = 'Waiting for execution...';
+}
+
+async function cancelExecution() {
+    if (!currentExecutionId) return;
+
+    if (!confirm('Are you sure you want to cancel this execution?')) return;
+
+    try {
+        const response = await fetch(
+            `${ROOT_PATH}/api/clients/${clientCode}/executions/${currentExecutionId}/cancel`,
+            { method: 'POST' }
+        );
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to cancel');
+        }
+
+        appendLogs(['--- Execution cancelled by user ---']);
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+function getStatusClass(status) {
+    switch (status) {
+        case 'completed': return 'success';
+        case 'running': return 'info';
+        case 'pending': return 'warning';
+        case 'failed': return 'danger';
+        case 'cancelled': return 'warning';
+        default: return 'info';
+    }
+}
+
+function formatDuration(seconds) {
+    if (seconds < 60) {
+        return `${seconds.toFixed(1)}s`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${minutes}m ${secs}s`;
+}
+
+function showResult(elementId, success, message) {
+    const el = document.getElementById(elementId);
+    el.className = `alert alert-${success ? 'success' : 'danger'} mt-2`;
+    el.textContent = message;
+    el.style.display = 'block';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block title %}Execution History - {{ client_code }}{% endblock %}
+
+{% block content %}
+<div class="flex-between mb-2">
+    <h1>Execution History</h1>
+    <div class="flex gap-1">
+        <a href="{{ root_path }}/clients/{{ client_code }}/execute" class="btn btn-primary">Execute Task</a>
+        <a href="{{ root_path }}/clients/{{ client_code }}" class="btn btn-secondary">Back to Project</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">All Executions</span>
+        <div class="flex gap-1">
+            <select id="status-filter" class="btn btn-secondary btn-sm">
+                <option value="">All Status</option>
+                <option value="running">Running</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
+            <button class="btn btn-sm btn-secondary" onclick="loadExecutions()">Refresh</button>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Task</th>
+                    <th>Type</th>
+                    <th>Iteration</th>
+                    <th>Status</th>
+                    <th>Progress</th>
+                    <th>Records</th>
+                    <th>Duration</th>
+                    <th>Started</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="executions-table">
+                <tr>
+                    <td colspan="10" class="text-center text-muted">Loading...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div id="pagination" class="flex-between mt-2" style="display: none;">
+        <span id="page-info"></span>
+        <div class="flex gap-1">
+            <button class="btn btn-sm btn-secondary" id="prev-btn" onclick="prevPage()">Previous</button>
+            <button class="btn btn-sm btn-secondary" id="next-btn" onclick="nextPage()">Next</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const clientCode = '{{ client_code }}';
+let currentPage = 0;
+const pageSize = 20;
+let totalExecutions = 0;
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadExecutions();
+    document.getElementById('status-filter').addEventListener('change', () => {
+        currentPage = 0;
+        loadExecutions();
+    });
+
+    // Auto-refresh if there are running executions
+    setInterval(() => {
+        const hasRunning = document.querySelector('.badge-info');
+        if (hasRunning) {
+            loadExecutions();
+        }
+    }, 5000);
+});
+
+async function loadExecutions() {
+    const status = document.getElementById('status-filter').value;
+    const offset = currentPage * pageSize;
+
+    try {
+        let url = `${ROOT_PATH}/api/clients/${clientCode}/executions?limit=${pageSize}&offset=${offset}`;
+        if (status) {
+            url += `&status=${status}`;
+        }
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        totalExecutions = data.total;
+        renderExecutions(data.executions);
+        updatePagination();
+    } catch (error) {
+        console.error('Error loading executions:', error);
+        document.getElementById('executions-table').innerHTML =
+            `<tr><td colspan="10" class="text-center text-danger">Error loading executions</td></tr>`;
+    }
+}
+
+function renderExecutions(executions) {
+    const tbody = document.getElementById('executions-table');
+
+    if (executions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">No executions found</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = executions.map(exec => `
+        <tr>
+            <td>#${exec.id}</td>
+            <td><strong>${exec.task_name}</strong></td>
+            <td><small class="text-muted">${exec.task_type}</small></td>
+            <td>${exec.iteration}</td>
+            <td><span class="badge badge-${getStatusClass(exec.status)}">${exec.status}</span></td>
+            <td>
+                <div class="progress-bar" style="width: 60px; height: 8px;">
+                    <div class="progress-fill" style="width: ${exec.progress_percent}%"></div>
+                </div>
+            </td>
+            <td>
+                <span class="text-success">${exec.success_count}</span> /
+                <span class="text-danger">${exec.error_count}</span>
+            </td>
+            <td>${exec.duration_seconds ? formatDuration(exec.duration_seconds) : '-'}</td>
+            <td>${exec.started_at ? formatDate(exec.started_at) : '-'}</td>
+            <td>
+                <a href="${ROOT_PATH}/clients/${clientCode}/executions/${exec.id}" class="btn btn-sm btn-secondary">
+                    View
+                </a>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function updatePagination() {
+    const pagination = document.getElementById('pagination');
+    const totalPages = Math.ceil(totalExecutions / pageSize);
+
+    if (totalPages <= 1) {
+        pagination.style.display = 'none';
+        return;
+    }
+
+    pagination.style.display = 'flex';
+    document.getElementById('page-info').textContent =
+        `Page ${currentPage + 1} of ${totalPages} (${totalExecutions} total)`;
+    document.getElementById('prev-btn').disabled = currentPage === 0;
+    document.getElementById('next-btn').disabled = currentPage >= totalPages - 1;
+}
+
+function prevPage() {
+    if (currentPage > 0) {
+        currentPage--;
+        loadExecutions();
+    }
+}
+
+function nextPage() {
+    const totalPages = Math.ceil(totalExecutions / pageSize);
+    if (currentPage < totalPages - 1) {
+        currentPage++;
+        loadExecutions();
+    }
+}
+
+function getStatusClass(status) {
+    switch (status) {
+        case 'completed': return 'success';
+        case 'running': return 'info';
+        case 'pending': return 'warning';
+        case 'failed': return 'danger';
+        case 'cancelled': return 'warning';
+        default: return 'info';
+    }
+}
+
+function formatDuration(seconds) {
+    if (seconds < 60) {
+        return `${seconds.toFixed(1)}s`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${minutes}m ${secs}s`;
+}
+
+function formatDate(dateStr) {
+    const date = new Date(dateStr);
+    return date.toLocaleString('zh-TW');
+}
+</script>
+{% endblock %}

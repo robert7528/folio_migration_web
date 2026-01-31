@@ -51,7 +51,7 @@ templates.env.globals["root_path"] = settings.root_path
 
 
 # Import and include API routers
-from .api import clients, credentials, files, config_editor, health, tasks  # noqa: E402
+from .api import clients, credentials, files, config_editor, health, tasks, executions  # noqa: E402
 
 app.include_router(clients.router)
 app.include_router(credentials.router)
@@ -59,6 +59,7 @@ app.include_router(files.router)
 app.include_router(config_editor.router)
 app.include_router(health.router)
 app.include_router(tasks.router)
+app.include_router(executions.router)
 
 
 # HTML Pages
@@ -126,6 +127,46 @@ async def clients_config_page(request: Request, client_code: str, filename: str)
             "title": f"Edit: {filename}",
             "client_code": client_code,
             "filename": filename,
+        },
+    )
+
+
+@app.get("/clients/{client_code}/execute", response_class=HTMLResponse)
+async def clients_execute_page(request: Request, client_code: str):
+    """Task execution page."""
+    return templates.TemplateResponse(
+        "executions/run.html",
+        {
+            "request": request,
+            "title": "Execute Tasks",
+            "client_code": client_code,
+        },
+    )
+
+
+@app.get("/clients/{client_code}/executions", response_class=HTMLResponse)
+async def clients_executions_page(request: Request, client_code: str):
+    """Execution history page."""
+    return templates.TemplateResponse(
+        "executions/history.html",
+        {
+            "request": request,
+            "title": "Execution History",
+            "client_code": client_code,
+        },
+    )
+
+
+@app.get("/clients/{client_code}/executions/{execution_id}", response_class=HTMLResponse)
+async def execution_detail_page(request: Request, client_code: str, execution_id: int):
+    """Execution detail page."""
+    return templates.TemplateResponse(
+        "executions/detail.html",
+        {
+            "request": request,
+            "title": f"Execution #{execution_id}",
+            "client_code": client_code,
+            "execution_id": execution_id,
         },
     )
 

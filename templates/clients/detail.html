@@ -6,6 +6,7 @@
 <div class="flex-between mb-2">
     <h1 id="page-title">Project: {{ client_code }}</h1>
     <div class="flex gap-1">
+        <a href="{{ root_path }}/clients/{{ client_code }}/execute" class="btn btn-success">Execute Tasks</a>
         <button class="btn btn-primary" onclick="showEditModal()">Edit Project</button>
         <button class="btn btn-danger" onclick="deleteProject()">Delete Project</button>
         <a href="{{ root_path }}/clients" class="btn btn-secondary">Back to List</a>
