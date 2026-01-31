@@ -411,19 +411,21 @@ document.addEventListener('click', function(e) {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.7);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 1000;
 }
 .modal-content {
-    background: var(--bg-primary);
+    background: #1a1a2e;
     border-radius: 8px;
     max-width: 600px;
     width: 90%;
     max-height: 80vh;
     overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    border: 1px solid #333;
 }
 .modal-lg {
     max-width: 900px;
@@ -433,20 +435,58 @@ document.addEventListener('click', function(e) {
     justify-content: space-between;
     align-items: center;
     padding: 1rem;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid #333;
+    background: #16162a;
+}
+.modal-header h3 {
+    margin: 0;
+    color: #fff;
 }
 .modal-body {
     padding: 1rem;
+    background: #1a1a2e;
+    color: #e0e0e0;
 }
 
 .json-view {
-    background: var(--bg-secondary);
+    background: #0d0d1a;
     padding: 1rem;
     border-radius: 4px;
     overflow-x: auto;
     font-size: 0.75rem;
     max-height: 300px;
     overflow-y: auto;
+    color: #a0e0a0;
+    border: 1px solid #333;
+}
+.modal-body h4 {
+    color: #fff;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+}
+.modal-body table {
+    width: 100%;
+    background: #0d0d1a;
+    border-collapse: collapse;
+}
+.modal-body table th,
+.modal-body table td {
+    padding: 0.5rem;
+    border: 1px solid #333;
+    text-align: left;
+}
+.modal-body table th {
+    background: #16162a;
+    color: #fff;
+}
+.modal-body table td {
+    color: #e0e0e0;
+}
+.modal-body p {
+    margin: 0.25rem 0;
+}
+.modal-body strong {
+    color: #fff;
 }
 
 .dropdown {
