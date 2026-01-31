@@ -399,6 +399,8 @@ class ValidationService:
             if folio_record:
                 result.folio_data = folio_record
                 result.folio_id = folio_record.get("id")
+                # Update HRID from FOLIO record (actual HRID on platform)
+                result.hrid = folio_record.get("hrid")
 
                 # Compare records
                 differences = self._compare_records(local_record, folio_record, record_type)
