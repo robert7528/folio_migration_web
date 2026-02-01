@@ -268,46 +268,64 @@ class ExecutionService:
             db.close()
 
     def _parse_progress(self, line: str) -> Optional[dict]:
-        """Parse progress information from log line."""
-        # Common patterns in folio_migration_tools output
-        patterns = [
-            # "Processed 100 of 1000 records"
-            r"Processed (\d+) of (\d+)",
-            # "Records: 100/1000"
-            r"Records:\s*(\d+)/(\d+)",
-            # "Progress: 50%"
-            r"Progress:\s*(\d+)%",
-            # "Transformed 500 records"
-            r"Transformed (\d+) records",
-            # "Created 100 Instance records"
-            r"Created (\d+) \w+ records",
-            # "Failed: 5"
-            r"Failed:\s*(\d+)",
-            # "Errors: 10"
-            r"Errors:\s*(\d+)",
-        ]
+        """Parse progress information from log line.
 
+        folio_migration_tools log format:
+        timestamp    INFO    message    task_name
+
+        Key patterns to match:
+        - "Done reading 14 records from file"
+        - "14 records processed"
+        - "Processed 100 of 1000 records"
+        - "Posted 50 records"
+        """
         result = {}
 
-        # Check for processed/total
+        # folio_migration_tools: "Done reading 14 records from file"
+        match = re.search(r"Done reading (\d+) records from file", line, re.IGNORECASE)
+        if match:
+            result["total"] = int(match.group(1))
+
+        # folio_migration_tools: "14 records processed"
+        match = re.search(r"(\d+) records processed", line, re.IGNORECASE)
+        if match:
+            count = int(match.group(1))
+            result["processed"] = count
+            result["success"] = count
+
+        # folio_migration_tools: "Saving map of 14 old and new IDs"
+        match = re.search(r"Saving map of (\d+) old and new IDs", line, re.IGNORECASE)
+        if match:
+            result["success"] = int(match.group(1))
+
+        # BatchPoster: "Posted 100 records" or "Posted 100 Instance"
+        match = re.search(r"Posted (\d+)", line, re.IGNORECASE)
+        if match:
+            result["success"] = int(match.group(1))
+            result["processed"] = int(match.group(1))
+
+        # Generic: "Processed 100 of 1000 records"
         match = re.search(r"Processed (\d+) of (\d+)", line, re.IGNORECASE)
         if match:
             result["processed"] = int(match.group(1))
             result["total"] = int(match.group(2))
 
-        # Check for records ratio
+        # Generic: "Records: 100/1000" or "100/1000 records"
         match = re.search(r"(\d+)/(\d+)\s*records", line, re.IGNORECASE)
         if match:
             result["processed"] = int(match.group(1))
             result["total"] = int(match.group(2))
 
-        # Check for created count
-        match = re.search(r"Created (\d+)", line, re.IGNORECASE)
+        # Generic: "Created 100" or "Transformed 100"
+        match = re.search(r"(?:Created|Transformed) (\d+)", line, re.IGNORECASE)
         if match:
             result["success"] = int(match.group(1))
 
-        # Check for error count
+        # Error counts: "Failed: 5" or "Errors: 10" or "5 failed"
         match = re.search(r"(?:Failed|Errors?):\s*(\d+)", line, re.IGNORECASE)
+        if match:
+            result["errors"] = int(match.group(1))
+        match = re.search(r"(\d+)\s+failed", line, re.IGNORECASE)
         if match:
             result["errors"] = int(match.group(1))
 
