@@ -312,6 +312,7 @@ PASSWORD=
                     "name": "transform_bibs",
                     "addAdministrativeNotesWithLegacyIds": True,
                     "migrationTaskType": "BibsTransformer",
+                    "hridHandling": "default",
                     "ilsFlavour": "tag001",
                     "tags_to_delete": [],
                     "files": [{"file_name": "bibs.mrc", "discovery_suppressed": False}],
