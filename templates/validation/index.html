@@ -28,8 +28,17 @@
         <span class="card-title">Start New Validation</span>
     </div>
     <div class="p-2">
+        <div class="alert alert-info mb-2">
+            <strong>Validation Workflow:</strong>
+            <ol style="margin: 0.5rem 0 0 1.5rem; padding: 0;">
+                <li>Select a <strong>Transformer</strong> execution (e.g., BibsTransformer)</li>
+                <li>Make sure the corresponding <strong>BatchPoster</strong> has been executed</li>
+                <li>Validation will compare the transformer output with FOLIO platform data</li>
+            </ol>
+        </div>
+
         <div class="form-group">
-            <label for="execution-select">Select Completed Execution</label>
+            <label for="execution-select">Select Completed Execution (Transformer only)</label>
             <select id="execution-select" class="form-control">
                 <option value="">Loading executions...</option>
             </select>
@@ -162,13 +171,18 @@ async function loadExecutions() {
         const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/executions?status=completed&limit=50`);
         const data = await response.json();
 
-        if (data.executions.length === 0) {
-            select.innerHTML = '<option value="">No completed executions available</option>';
+        // Filter out BatchPoster - only show Transformer executions
+        const transformerExecutions = data.executions.filter(exec =>
+            exec.task_type !== 'BatchPoster'
+        );
+
+        if (transformerExecutions.length === 0) {
+            select.innerHTML = '<option value="">No transformer executions available</option>';
             return;
         }
 
-        select.innerHTML = '<option value="">Select an execution...</option>' +
-            data.executions.map(exec => `
+        select.innerHTML = '<option value="">Select a transformer execution...</option>' +
+            transformerExecutions.map(exec => `
                 <option value="${exec.id}">
                     #${exec.id} - ${exec.task_name} (${exec.task_type}) - ${new Date(exec.completed_at).toLocaleString('zh-TW')}
                 </option>
