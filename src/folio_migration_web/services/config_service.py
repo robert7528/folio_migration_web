@@ -526,11 +526,11 @@ class ConfigService:
                 "name": "transform_bibs",
                 "migrationTaskType": "BibsTransformer",
                 "addAdministrativeNotesWithLegacyIds": True,
+                "hridHandling": "default",
                 "ilsFlavour": "tag001",
                 "tags_to_delete": [],
                 "files": [{"file_name": "bibs.mrc", "discovery_suppressed": False}],
                 "updateHridSettings": False,
-                "hridHandling": "preserve001",
             },
             {
                 "name": "post_instances",
