@@ -197,7 +197,8 @@ async def upload_mapping_file(
     """
     Upload a mapping file.
 
-    Mapping files (TSV, CSV, TXT, and mapping JSON files) are uploaded to: mapping_files/mappings/
+    Mapping files are uploaded to: mapping_files/
+    This matches folio_migration_tools default path resolution.
     """
     client_path = project_service.get_client_path(client_code)
     if not client_path.exists():
@@ -211,8 +212,8 @@ async def upload_mapping_file(
             detail=f"File type '{ext}' not allowed for mapping files. Use .json, .tsv, .csv, or .txt",
         )
 
-    # Mapping files go to mappings/ subdirectory
-    target_path = client_path / "mapping_files" / "mappings"
+    # Mapping files go to mapping_files/ directly (folio_migration_tools default)
+    target_path = client_path / "mapping_files"
     target_path.mkdir(parents=True, exist_ok=True)
 
     file_path = target_path / file.filename
