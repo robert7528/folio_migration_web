@@ -40,24 +40,34 @@ async def list_config_files(
     client_code: str,
     project_service: ProjectService = Depends(get_project_service),
 ):
-    """List configuration files in the mapping_files directory."""
+    """List configuration files in the mapping_files directory.
+
+    Only shows actual config files, not mapping files.
+    Config files are: *_config.json, library_config.json, migration_config.json
+    """
     client_path = project_service.get_client_path(client_code)
     mapping_path = client_path / "mapping_files"
 
     if not mapping_path.exists():
         raise HTTPException(status_code=404, detail="mapping_files directory not found")
 
+    # Config file patterns
+    config_patterns = ["_config.json", "library_config.json", "migration_config.json"]
+
     files = []
     for item in mapping_path.iterdir():
         if item.is_file() and item.suffix == ".json":
-            stat = item.stat()
-            files.append(
-                ConfigFileInfo(
-                    filename=item.name,
-                    path=str(item.relative_to(client_path)),
-                    size=stat.st_size,
+            # Only include actual config files, not mapping JSON files
+            is_config = any(item.name.endswith(p) or item.name == p for p in config_patterns)
+            if is_config:
+                stat = item.stat()
+                files.append(
+                    ConfigFileInfo(
+                        filename=item.name,
+                        path=str(item.relative_to(client_path)),
+                        size=stat.st_size,
+                    )
                 )
-            )
 
     files.sort(key=lambda f: f.filename)
 
@@ -77,19 +87,10 @@ async def get_config(
     if ".." in filename:
         raise HTTPException(status_code=403, detail="Invalid filename")
 
-    # Try multiple locations for the file
-    possible_paths = [
-        client_path / "mapping_files" / filename,
-        client_path / "mapping_files" / "mappings" / filename,
-    ]
+    # Config and mapping files are in mapping_files/ directly
+    config_path = client_path / "mapping_files" / filename
 
-    config_path = None
-    for path in possible_paths:
-        if path.exists():
-            config_path = path
-            break
-
-    if not config_path:
+    if not config_path.exists():
         raise HTTPException(status_code=404, detail=f"Config file '{filename}' not found")
 
     # Handle different file types
@@ -125,19 +126,10 @@ async def update_config(
     if ".." in filename:
         raise HTTPException(status_code=403, detail="Invalid filename")
 
-    # Try multiple locations for the file
-    possible_paths = [
-        client_path / "mapping_files" / filename,
-        client_path / "mapping_files" / "mappings" / filename,
-    ]
+    # Config and mapping files are in mapping_files/ directly
+    config_path = client_path / "mapping_files" / filename
 
-    config_path = None
-    for path in possible_paths:
-        if path.exists():
-            config_path = path
-            break
-
-    if not config_path:
+    if not config_path.exists():
         raise HTTPException(status_code=404, detail=f"Config file '{filename}' not found")
 
     suffix = config_path.suffix.lower()

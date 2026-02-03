@@ -90,20 +90,10 @@ async def list_mapping_files(
     mappings = []
 
     if mapping_dir.exists():
-        # Check mappings subdirectory
-        mappings_subdir = mapping_dir / "mappings"
-        if mappings_subdir.exists():
-            for f in mappings_subdir.iterdir():
-                if f.is_file() and f.suffix in [".json", ".tsv", ".csv", ".txt"]:
-                    mappings.append({
-                        "filename": f.name,
-                        "size": f.stat().st_size,
-                    })
-
-        # Also check root mapping_files for any loose mapping files
+        # List mapping files from mapping_files/ directly
         for f in mapping_dir.iterdir():
             if f.is_file() and f.suffix in [".json", ".tsv", ".csv", ".txt"]:
-                # Skip task config files, library_config, and migration_config
+                # Skip config files (task configs, library_config, migration_config)
                 if (f.name.endswith("_config.json") or
                     f.name == "library_config.json" or
                     f.name == "migration_config.json"):

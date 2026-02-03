@@ -138,13 +138,11 @@ class ConfigService:
         self.client_path = client_path
         self.mapping_files_dir = client_path / "mapping_files"
         self.tasks_dir = self.mapping_files_dir / "tasks"
-        self.mappings_dir = self.mapping_files_dir / "mappings"
 
     def ensure_directories(self):
         """Create necessary directories."""
         self.mapping_files_dir.mkdir(parents=True, exist_ok=True)
         self.tasks_dir.mkdir(parents=True, exist_ok=True)
-        self.mappings_dir.mkdir(parents=True, exist_ok=True)
 
     def generate_library_config(
         self,
@@ -432,7 +430,7 @@ class ConfigService:
         self, filename: str, headers: list[str], sample_rows: list[list[str]]
     ):
         """Write a TSV template file."""
-        filepath = self.mappings_dir / filename
+        filepath = self.mapping_files_dir / filename
         if filepath.exists():
             return  # Don't overwrite existing files
 
@@ -444,7 +442,7 @@ class ConfigService:
 
     def _write_json_template(self, filename: str, content: dict):
         """Write a JSON template file."""
-        filepath = self.mappings_dir / filename
+        filepath = self.mapping_files_dir / filename
         if filepath.exists():
             return  # Don't overwrite existing files
 
@@ -506,11 +504,16 @@ class ConfigService:
             self.update_task_config(task_type, config)
 
     def list_mapping_files(self) -> list[dict]:
-        """List all mapping files."""
+        """List all mapping files (excludes config files)."""
         files = []
-        if self.mappings_dir.exists():
-            for f in sorted(self.mappings_dir.iterdir()):
-                if f.is_file():
+        if self.mapping_files_dir.exists():
+            for f in sorted(self.mapping_files_dir.iterdir()):
+                if f.is_file() and f.suffix in [".json", ".tsv", ".csv", ".txt"]:
+                    # Skip config files
+                    if (f.name.endswith("_config.json") or
+                        f.name == "library_config.json" or
+                        f.name == "migration_config.json"):
+                        continue
                     files.append({
                         "filename": f.name,
                         "path": str(f.relative_to(self.client_path)),
