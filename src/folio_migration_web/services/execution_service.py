@@ -277,6 +277,23 @@ class ExecutionService:
                     execution.result_summary = self._get_result_summary(
                         base_folder, execution.iteration, task_name
                     )
+                    # Try to get statistics from report file
+                    stats = self._get_stats_from_report(
+                        base_folder, execution.iteration, task_name
+                    )
+                    if stats:
+                        if stats.get("total"):
+                            execution.total_records = stats["total"]
+                        if stats.get("processed"):
+                            execution.processed_records = stats["processed"]
+                        if stats.get("success"):
+                            execution.success_count = stats["success"]
+                        if stats.get("errors"):
+                            execution.error_count = stats["errors"]
+                        if execution.total_records > 0:
+                            execution.progress_percent = (
+                                execution.processed_records / execution.total_records * 100
+                            )
                 else:
                     execution.status = "failed"
                     execution.error_message = f"Process exited with code {return_code}"
@@ -377,6 +394,57 @@ class ExecutionService:
                     except Exception:
                         pass
         return None
+
+    def _get_stats_from_report(self, base_folder: str, iteration: str, task_name: str) -> Optional[dict]:
+        """Extract statistics from the migration report markdown file."""
+        reports_path = Path(base_folder) / "iterations" / iteration / "reports"
+        report_file = reports_path / f"report_{task_name}.md"
+
+        if not report_file.exists():
+            return None
+
+        try:
+            content = report_file.read_text(encoding="utf-8")
+            result = {}
+
+            # Parse markdown report for statistics
+            # Look for patterns like "## Records" section with tables
+            # Or summary lines like "Total records: 100"
+
+            # Pattern: "| Total | 1234 |" in markdown table
+            match = re.search(r"\|\s*Total\s*\|\s*(\d+)\s*\|", content, re.IGNORECASE)
+            if match:
+                result["total"] = int(match.group(1))
+                result["processed"] = int(match.group(1))
+
+            # Pattern: "| Written | 1234 |"
+            match = re.search(r"\|\s*Written\s*\|\s*(\d+)\s*\|", content, re.IGNORECASE)
+            if match:
+                result["success"] = int(match.group(1))
+
+            # Pattern: "| Failed | 5 |"
+            match = re.search(r"\|\s*Failed\s*\|\s*(\d+)\s*\|", content, re.IGNORECASE)
+            if match:
+                result["errors"] = int(match.group(1))
+
+            # Alternative: Count lines in result JSON file
+            if not result:
+                results_path = Path(base_folder) / "iterations" / iteration / "results"
+                result_file = results_path / f"folio_users_{task_name}.json"
+                if result_file.exists():
+                    try:
+                        with open(result_file, "r", encoding="utf-8") as f:
+                            # Count JSON objects (one per line for FOLIO format)
+                            count = sum(1 for line in f if line.strip())
+                        result["total"] = count
+                        result["processed"] = count
+                        result["success"] = count
+                    except Exception:
+                        pass
+
+            return result if result else None
+        except Exception:
+            return None
 
     def cancel_execution(self, execution_id: int) -> bool:
         """Cancel a running execution."""
