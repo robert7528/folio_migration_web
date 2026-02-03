@@ -169,6 +169,23 @@ async def update_config(
     return {"status": "updated", "filename": filename}
 
 
+# IMPORTANT: Static routes must come BEFORE dynamic /{filename} routes
+@router.post("/validate", response_model=ConfigValidationResult)
+async def validate_config(content: Dict[str, Any]):
+    """Validate configuration content without saving."""
+    try:
+        config = MigrationConfig(**content)
+        return ConfigValidationResult(
+            valid=True,
+            parsed=config.model_dump(by_alias=True),
+        )
+    except ValidationError as e:
+        return ConfigValidationResult(
+            valid=False,
+            errors=e.errors(),
+        )
+
+
 @router.post("/{filename}")
 async def create_config(
     client_code: str,
@@ -202,22 +219,6 @@ async def create_config(
         raise HTTPException(status_code=500, detail=f"Failed to create file: {str(e)}")
 
     return {"status": "created", "filename": filename}
-
-
-@router.post("/validate", response_model=ConfigValidationResult)
-async def validate_config(content: Dict[str, Any]):
-    """Validate configuration content without saving."""
-    try:
-        config = MigrationConfig(**content)
-        return ConfigValidationResult(
-            valid=True,
-            parsed=config.model_dump(by_alias=True),
-        )
-    except ValidationError as e:
-        return ConfigValidationResult(
-            valid=False,
-            errors=e.errors(),
-        )
 
 
 @router.delete("/{filename}")
