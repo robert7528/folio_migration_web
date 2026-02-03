@@ -10,8 +10,9 @@
 
 <div class="card">
     <div class="editor-toolbar">
-        <button class="btn btn-secondary" onclick="formatJson()">Format JSON</button>
-        <button class="btn btn-secondary" onclick="validateConfig()">Validate</button>
+        <span id="file-type-badge" class="badge" style="margin-right: 1rem;"></span>
+        <button id="btn-format" class="btn btn-secondary" onclick="formatJson()">Format JSON</button>
+        <button id="btn-validate" class="btn btn-secondary" onclick="validateConfig()">Validate</button>
         <button class="btn btn-primary" onclick="saveConfig()">Save</button>
     </div>
 
@@ -28,6 +29,7 @@
 const clientCode = '{{ client_code }}';
 const filename = '{{ filename }}';
 let originalContent = null;
+let fileType = 'json';
 
 document.addEventListener('DOMContentLoaded', async () => {
     await loadConfig();
@@ -37,14 +39,33 @@ async function loadConfig() {
     try {
         const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/config/${filename}`);
         if (!response.ok) {
-            throw new Error('Failed to load configuration');
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to load configuration');
         }
 
         const data = await response.json();
         originalContent = data.content;
+        fileType = data.file_type || 'json';
 
         const editor = document.getElementById('json-editor');
-        editor.value = JSON.stringify(data.content, null, 4);
+        const badge = document.getElementById('file-type-badge');
+        const btnFormat = document.getElementById('btn-format');
+        const btnValidate = document.getElementById('btn-validate');
+
+        if (fileType === 'json') {
+            editor.value = JSON.stringify(data.content, null, 4);
+            badge.textContent = 'JSON';
+            badge.className = 'badge badge-info';
+            btnFormat.style.display = 'inline-block';
+            btnValidate.style.display = 'inline-block';
+        } else {
+            // Text file (TSV, CSV, TXT)
+            editor.value = data.content;
+            badge.textContent = filename.split('.').pop().toUpperCase();
+            badge.className = 'badge badge-secondary';
+            btnFormat.style.display = 'none';
+            btnValidate.style.display = 'none';
+        }
 
     } catch (error) {
         showResult(false, error.message);
@@ -91,12 +112,22 @@ async function saveConfig() {
     const editor = document.getElementById('json-editor');
 
     try {
-        const content = JSON.parse(editor.value);
+        let body;
+        let content;
+
+        if (fileType === 'json') {
+            content = JSON.parse(editor.value);
+            body = JSON.stringify(content);
+        } else {
+            // Text file
+            content = editor.value;
+            body = JSON.stringify({ content: content });
+        }
 
         const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/config/${filename}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(content)
+            body: body
         });
 
         if (!response.ok) {
@@ -128,10 +159,19 @@ function showResult(success, message) {
 window.addEventListener('beforeunload', (e) => {
     const editor = document.getElementById('json-editor');
     try {
-        const current = JSON.parse(editor.value);
-        if (JSON.stringify(current) !== JSON.stringify(originalContent)) {
-            e.preventDefault();
-            e.returnValue = '';
+        let current;
+        if (fileType === 'json') {
+            current = JSON.parse(editor.value);
+            if (JSON.stringify(current) !== JSON.stringify(originalContent)) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        } else {
+            current = editor.value;
+            if (current !== originalContent) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
         }
     } catch {
         // Invalid JSON, warn anyway

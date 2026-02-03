@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ValidationError
@@ -64,7 +64,7 @@ async def list_config_files(
     return ConfigListResponse(client_code=client_code, files=files)
 
 
-@router.get("/{filename}", response_model=ConfigContent)
+@router.get("/{filename:path}")
 async def get_config(
     client_code: str,
     filename: str,
@@ -72,64 +72,112 @@ async def get_config(
 ):
     """Get configuration file content."""
     client_path = project_service.get_client_path(client_code)
-    config_path = client_path / "mapping_files" / filename
 
     # Security check
-    if ".." in filename or "/" in filename or "\\" in filename:
+    if ".." in filename:
         raise HTTPException(status_code=403, detail="Invalid filename")
 
-    if not config_path.exists():
+    # Try multiple locations for the file
+    possible_paths = [
+        client_path / "mapping_files" / filename,
+        client_path / "mapping_files" / "mappings" / filename,
+    ]
+
+    config_path = None
+    for path in possible_paths:
+        if path.exists():
+            config_path = path
+            break
+
+    if not config_path:
         raise HTTPException(status_code=404, detail=f"Config file '{filename}' not found")
 
-    if config_path.suffix != ".json":
-        raise HTTPException(status_code=400, detail="Only JSON files are supported")
+    # Handle different file types
+    suffix = config_path.suffix.lower()
 
-    try:
+    if suffix == ".json":
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                content = json.load(f)
+            return {"filename": filename, "content": content, "file_type": "json"}
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
+    elif suffix in [".tsv", ".csv", ".txt"]:
+        # Return raw content for text files
         with open(config_path, "r", encoding="utf-8") as f:
-            content = json.load(f)
-    except json.JSONDecodeError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
+            content = f.read()
+        return {"filename": filename, "content": content, "file_type": "text"}
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {suffix}")
 
-    return ConfigContent(filename=filename, content=content)
+
+class TextFileContent(BaseModel):
+    """Text file content for TSV/CSV files."""
+    content: str
 
 
-@router.put("/{filename}")
+@router.put("/{filename:path}")
 async def update_config(
     client_code: str,
     filename: str,
-    content: Dict[str, Any],
+    content: Any,
     project_service: ProjectService = Depends(get_project_service),
 ):
     """Update configuration file."""
     client_path = project_service.get_client_path(client_code)
-    config_path = client_path / "mapping_files" / filename
 
     # Security check
-    if ".." in filename or "/" in filename or "\\" in filename:
+    if ".." in filename:
         raise HTTPException(status_code=403, detail="Invalid filename")
 
-    if not config_path.exists():
+    # Try multiple locations for the file
+    possible_paths = [
+        client_path / "mapping_files" / filename,
+        client_path / "mapping_files" / "mappings" / filename,
+    ]
+
+    config_path = None
+    for path in possible_paths:
+        if path.exists():
+            config_path = path
+            break
+
+    if not config_path:
         raise HTTPException(status_code=404, detail=f"Config file '{filename}' not found")
 
-    # Validate the content if it's a migration config
-    if "libraryInformation" in content and "migrationTasks" in content:
-        try:
-            MigrationConfig(**content)
-        except ValidationError as e:
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "message": "Configuration validation failed",
-                    "errors": e.errors(),
-                },
-            )
+    suffix = config_path.suffix.lower()
 
-    # Write the file
-    try:
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(content, f, indent=4, ensure_ascii=False)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to write file: {str(e)}")
+    # Handle different file types
+    if suffix == ".json":
+        # Validate the content if it's a migration config
+        if isinstance(content, dict) and "libraryInformation" in content and "migrationTasks" in content:
+            try:
+                MigrationConfig(**content)
+            except ValidationError as e:
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "message": "Configuration validation failed",
+                        "errors": e.errors(),
+                    },
+                )
+
+        # Write the JSON file
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(content, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to write file: {str(e)}")
+    elif suffix in [".tsv", ".csv", ".txt"]:
+        # Write text file
+        try:
+            text_content = content if isinstance(content, str) else content.get("content", "")
+            with open(config_path, "w", encoding="utf-8") as f:
+                f.write(text_content)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to write file: {str(e)}")
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {suffix}")
 
     return {"status": "updated", "filename": filename}
 
