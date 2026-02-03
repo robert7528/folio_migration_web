@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Union
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel, ValidationError
 
 from ..models.config import MigrationConfig, ConfigValidationResult
@@ -111,16 +111,11 @@ async def get_config(
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {suffix}")
 
 
-class TextFileContent(BaseModel):
-    """Text file content for TSV/CSV files."""
-    content: str
-
-
 @router.put("/{filename:path}")
 async def update_config(
     client_code: str,
     filename: str,
-    content: Any,
+    content: Any = Body(...),
     project_service: ProjectService = Depends(get_project_service),
 ):
     """Update configuration file."""
