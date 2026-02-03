@@ -104,8 +104,9 @@ class FolioDeletionClient(FolioApiClient):
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 # Query for the user's request preference
+                # Note: FOLIO CQL for UUIDs should not have quotes around the value
                 url = f"{self.folio_url}/request-preference-storage/request-preference"
-                params = {"query": f'userId=="{user_id}"'}
+                params = {"query": f"userId=={user_id}"}
                 response = await client.get(url, headers=self.headers, params=params)
 
                 if response.status_code != 200:
