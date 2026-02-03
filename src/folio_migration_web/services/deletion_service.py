@@ -96,8 +96,11 @@ class FolioDeletionClient(FolioApiClient):
             user_id
         )
 
-    async def _delete_user_request_preference(self, user_id: str) -> None:
-        """Delete request preference for a user (if exists)."""
+    async def _delete_user_request_preference(self, user_id: str) -> Dict[str, Any]:
+        """Delete request preference for a user (if exists).
+
+        Returns dict with status: 'deleted', 'not_found', or 'failed'
+        """
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 # Query for the user's request preference
@@ -105,18 +108,32 @@ class FolioDeletionClient(FolioApiClient):
                 params = {"query": f'userId=="{user_id}"'}
                 response = await client.get(url, headers=self.headers, params=params)
 
-                if response.status_code == 200:
-                    data = response.json()
-                    prefs = data.get("requestPreferences", [])
-                    for pref in prefs:
-                        pref_id = pref.get("id")
-                        if pref_id:
-                            # Delete the request preference
-                            delete_url = f"{self.folio_url}/request-preference-storage/request-preference/{pref_id}"
-                            await client.delete(delete_url, headers=self.headers)
-        except Exception:
-            # Ignore errors - request preference deletion is best effort
-            pass
+                if response.status_code != 200:
+                    return {"status": "failed", "error": f"Query failed: {response.status_code}"}
+
+                data = response.json()
+                prefs = data.get("requestPreferences", [])
+
+                if not prefs:
+                    return {"status": "not_found", "user_id": user_id}
+
+                deleted_count = 0
+                for pref in prefs:
+                    pref_id = pref.get("id")
+                    if pref_id:
+                        # Delete the request preference
+                        delete_url = f"{self.folio_url}/request-preference-storage/request-preference/{pref_id}"
+                        del_response = await client.delete(delete_url, headers=self.headers)
+                        if del_response.status_code == 204:
+                            deleted_count += 1
+
+                if deleted_count > 0:
+                    return {"status": "deleted", "user_id": user_id, "count": deleted_count}
+                else:
+                    return {"status": "failed", "user_id": user_id, "error": "Delete requests failed"}
+
+        except Exception as e:
+            return {"status": "failed", "user_id": user_id, "error": str(e)}
 
     async def _delete_record(self, endpoint: str, record_id: str) -> Dict[str, Any]:
         """Generic record deletion method."""

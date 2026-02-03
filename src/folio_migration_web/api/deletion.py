@@ -484,20 +484,30 @@ async def cleanup_request_preferences(
         )
 
         deleted_count = 0
+        not_found_count = 0
         failed_count = 0
+        failed_details = []
 
         for user_id in user_ids:
-            try:
-                await folio_client._delete_user_request_preference(user_id)
+            result = await folio_client._delete_user_request_preference(user_id)
+            if result["status"] == "deleted":
                 deleted_count += 1
-            except Exception:
+            elif result["status"] == "not_found":
+                not_found_count += 1
+            else:
                 failed_count += 1
+                failed_details.append({
+                    "user_id": user_id,
+                    "error": result.get("error", "Unknown error")
+                })
 
         return {
             "status": "completed",
-            "message": f"Cleaned up request preferences for {len(user_ids)} users",
+            "message": f"Processed {len(user_ids)} users",
             "deleted_count": deleted_count,
+            "not_found_count": not_found_count,
             "failed_count": failed_count,
+            "failed_details": failed_details[:10] if failed_details else [],  # Limit to 10
         }
 
     except ValueError as e:
