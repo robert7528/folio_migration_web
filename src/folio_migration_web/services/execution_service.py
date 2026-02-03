@@ -65,12 +65,42 @@ class ExecutionService:
                 {
                     "name": task.get("name"),
                     "type": task.get("migrationTaskType"),
-                    "files": task.get("files", []),
+                    "files": self._extract_input_files(task),
                 }
                 for task in tasks
             ]
         except Exception:
             return []
+
+    def _extract_input_files(self, task: dict) -> list[dict]:
+        """Extract input files from task config, handling different field names."""
+        files = []
+
+        # Standard files array (BibsTransformer, BatchPoster, ItemsTransformer, etc.)
+        if "files" in task:
+            files.extend(task["files"])
+
+        # UserTransformer uses userFile
+        if "userFile" in task:
+            files.append(task["userFile"])
+
+        # LoansMigrator uses openLoansFiles
+        if "openLoansFiles" in task:
+            files.extend(task["openLoansFiles"])
+
+        # RequestsMigrator uses openRequestsFile
+        if "openRequestsFile" in task:
+            files.append(task["openRequestsFile"])
+
+        # CoursesMigrator uses coursesFile
+        if "coursesFile" in task:
+            files.append(task["coursesFile"])
+
+        # ReservesMigrator uses courseReserveFilePath
+        if "courseReserveFilePath" in task:
+            files.append(task["courseReserveFilePath"])
+
+        return files
 
     def create_execution(
         self,
