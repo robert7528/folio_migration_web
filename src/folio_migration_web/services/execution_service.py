@@ -249,6 +249,9 @@ class ExecutionService:
                             execution.success_count = progress_info["success"]
                         if progress_info.get("errors"):
                             execution.error_count = progress_info["errors"]
+                        # Increment error count for each ERROR/CRITICAL log line
+                        if progress_info.get("error_increment"):
+                            execution.error_count = (execution.error_count or 0) + progress_info["error_increment"]
                         if execution.total_records > 0:
                             execution.progress_percent = (
                                 execution.processed_records / execution.total_records * 100
@@ -375,6 +378,15 @@ class ExecutionService:
         match = re.search(r"(\d+)\s+failed", line, re.IGNORECASE)
         if match:
             result["errors"] = int(match.group(1))
+
+        # Detect ERROR level log lines (folio_migration_tools format)
+        # Format: "timestamp    ERROR    message    task_name"
+        if re.search(r"\tERROR\t|\sERROR\s", line):
+            result["error_increment"] = 1
+
+        # Detect CRITICAL level log lines
+        if re.search(r"\tCRITICAL\t|\sCRITICAL\s", line):
+            result["error_increment"] = 1
 
         return result if result else None
 
