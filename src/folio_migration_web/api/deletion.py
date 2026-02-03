@@ -19,6 +19,7 @@ from ..services.deletion_service import (
     DeletionService,
     get_deletion_service,
 )
+from ..services.validation_service import RecordType
 from ..utils.encryption import decrypt_value
 
 router = APIRouter(prefix="/api/clients/{client_code}/deletion", tags=["deletion"])
@@ -427,3 +428,79 @@ async def delete_deletion_record(
         "status": "success",
         "message": f"Deletion record {deletion_id} deleted",
     }
+
+
+@router.post("/cleanup-request-preferences")
+async def cleanup_request_preferences(
+    client_code: str,
+    request: StartDeletionRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Clean up orphaned request preferences for users.
+
+    Use this when users have been deleted but their request preferences remain,
+    causing "Request preference for specified user already exists" errors on re-import.
+    """
+    client = get_client_or_404(client_code, db)
+
+    # Check credentials
+    username, password = get_folio_credentials(client)
+
+    # Get execution
+    execution = db.query(ExecutionModel).filter(
+        ExecutionModel.id == request.execution_id,
+        ExecutionModel.client_code == client_code,
+    ).first()
+
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+
+    # Get client path and find user IDs
+    client_path = settings.clients_dir / client_code
+    service = get_deletion_service(client_path, db)
+
+    try:
+        # Only works for user-related executions
+        record_type = service._get_record_type(execution.task_type, execution.task_name)
+        if record_type != RecordType.USERS:
+            raise HTTPException(
+                status_code=400,
+                detail="This operation only works for user-related executions"
+            )
+
+        output_file = service._find_output_file(execution)
+        if not output_file:
+            raise HTTPException(status_code=404, detail="Output file not found")
+
+        records = service._load_records(output_file, record_type)
+        user_ids = [r.get("id") for r in records if r.get("id")]
+
+        # Create FOLIO client and delete request preferences
+        folio_client = await FolioDeletionClient.create(
+            folio_url=client.folio_url,
+            tenant_id=client.tenant_id,
+            username=username,
+            password=password,
+        )
+
+        deleted_count = 0
+        failed_count = 0
+
+        for user_id in user_ids:
+            try:
+                await folio_client._delete_user_request_preference(user_id)
+                deleted_count += 1
+            except Exception:
+                failed_count += 1
+
+        return {
+            "status": "completed",
+            "message": f"Cleaned up request preferences for {len(user_ids)} users",
+            "deleted_count": deleted_count,
+            "failed_count": failed_count,
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
