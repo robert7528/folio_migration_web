@@ -197,7 +197,7 @@ async def upload_mapping_file(
     """
     Upload a mapping file.
 
-    Files are uploaded to: mapping_files/
+    Mapping files (TSV, CSV, TXT, and mapping JSON files) are uploaded to: mapping_files/mappings/
     """
     client_path = project_service.get_client_path(client_code)
     if not client_path.exists():
@@ -211,7 +211,8 @@ async def upload_mapping_file(
             detail=f"File type '{ext}' not allowed for mapping files. Use .json, .tsv, .csv, or .txt",
         )
 
-    target_path = client_path / "mapping_files"
+    # Mapping files go to mappings/ subdirectory
+    target_path = client_path / "mapping_files" / "mappings"
     target_path.mkdir(parents=True, exist_ok=True)
 
     file_path = target_path / file.filename
