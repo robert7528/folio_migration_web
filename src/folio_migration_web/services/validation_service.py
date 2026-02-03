@@ -520,13 +520,19 @@ class ValidationService:
         - Local file contains legacy ID in hrid field
         - FOLIO auto-generates new HRID when hridHandling="default"
         - They will always be different, which is expected behavior
+
+        Note: Reference data fields (patronGroup, materialTypeId, etc.) are excluded
+        because:
+        - Local file may contain legacy codes (e.g., "C1")
+        - FOLIO stores resolved UUIDs (e.g., "227c762a-71a4-4aa4-...")
+        - Direct comparison would always show mismatch
+        - These are validated during transformation, not here
         """
         fields_map = {
             RecordType.INSTANCES: [
                 "title",
                 "source",
-                "instanceTypeId",
-                "modeOfIssuanceId",
+                # instanceTypeId and modeOfIssuanceId are reference data UUIDs
             ],
             RecordType.HOLDINGS: [
                 "instanceId",
@@ -536,14 +542,13 @@ class ValidationService:
             RecordType.ITEMS: [
                 "holdingsRecordId",
                 "barcode",
-                "materialTypeId",
-                "permanentLoanTypeId",
+                # materialTypeId and permanentLoanTypeId are reference data UUIDs
             ],
             RecordType.USERS: [
                 "username",
                 "barcode",
                 "active",
-                "patronGroup",
+                # patronGroup excluded: local has legacy code, FOLIO has UUID
                 "personal.lastName",
                 "personal.firstName",
             ],
