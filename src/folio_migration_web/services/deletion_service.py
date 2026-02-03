@@ -328,12 +328,34 @@ class DeletionService:
         return None
 
     def _find_output_file(self, execution: Execution) -> Optional[Path]:
-        """Find the output JSON file for an execution."""
+        """Find the output JSON file for an execution.
+
+        For Transformer tasks: looks for folio_*{task_name}.json
+        For BatchPoster tasks: looks for the Transformer output file that was used as input
+        """
         iteration_path = self.client_path / "iterations" / execution.iteration
         results_path = iteration_path / "results"
 
         if not results_path.exists():
             return None
+
+        # For BatchPoster tasks, find the Transformer output file (the input file for posting)
+        # BatchPoster doesn't create new records, it posts records from Transformer output
+        if execution.task_type == "BatchPoster":
+            record_type = self._get_record_type(execution.task_type, execution.task_name)
+            if record_type:
+                # Map record type to expected file pattern
+                type_to_pattern = {
+                    RecordType.INSTANCES: "folio_instances_",
+                    RecordType.HOLDINGS: "folio_holdings_",
+                    RecordType.ITEMS: "folio_items_",
+                    RecordType.USERS: "folio_users_",
+                }
+                pattern = type_to_pattern.get(record_type)
+                if pattern:
+                    for f in results_path.rglob("*.json"):
+                        if f.name.startswith(pattern) and "other" not in f.name:
+                            return f
 
         # Look for folio_*.json files containing the task name
         for f in results_path.rglob("folio_*.json"):
