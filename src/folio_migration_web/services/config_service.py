@@ -317,43 +317,75 @@ class ConfigService:
             ],
         )
 
-        # User mapping JSON template
+        # User mapping JSON template (folio_migration_tools format)
         self._write_json_template(
             "user_mapping.json",
             {
-                "legacy_id_field": "patron_id",
-                "username_field": "username",
-                "barcode_field": "barcode",
-                "email_field": "email",
-                "firstName_field": "first_name",
-                "lastName_field": "last_name",
-                "expirationDate_field": "expiry_date",
-                "patronGroup_field": "patron_type",
+                "data": [
+                    {"folio_field": "barcode", "legacy_field": "BARCODE", "value": "", "description": ""},
+                    {"folio_field": "externalSystemId", "legacy_field": "USERNAME", "value": "", "description": ""},
+                    {"folio_field": "legacyIdentifier", "legacy_field": "PATRON_ID", "value": "", "description": ""},
+                    {"folio_field": "patronGroup", "legacy_field": "PATRON_TYPE", "value": "", "description": ""},
+                    {"folio_field": "expirationDate", "legacy_field": "EXPIRY_DATE", "value": "", "description": ""},
+                    {"folio_field": "personal.email", "legacy_field": "EMAIL", "value": "", "description": ""},
+                    {"folio_field": "personal.firstName", "legacy_field": "FIRST_NAME", "value": "", "description": ""},
+                    {"folio_field": "personal.lastName", "legacy_field": "LAST_NAME", "value": "", "description": ""},
+                    {"folio_field": "personal.middleName", "legacy_field": "Not mapped", "value": "", "description": ""},
+                    {"folio_field": "personal.phone", "legacy_field": "PHONE", "value": "", "description": ""},
+                    {"folio_field": "personal.mobilePhone", "legacy_field": "MOBILE", "value": "", "description": ""},
+                    {"folio_field": "personal.addresses[0].addressLine1", "legacy_field": "ADDRESS1", "value": "", "description": ""},
+                    {"folio_field": "personal.addresses[0].addressLine2", "legacy_field": "ADDRESS2", "value": "", "description": ""},
+                    {"folio_field": "personal.addresses[0].city", "legacy_field": "CITY", "value": "", "description": ""},
+                    {"folio_field": "personal.addresses[0].postalCode", "legacy_field": "ZIP", "value": "", "description": ""},
+                    {"folio_field": "personal.addresses[0].addressTypeId", "legacy_field": "Not mapped", "value": "", "description": ""},
+                    {"folio_field": "username", "legacy_field": "USERNAME", "value": "", "description": ""},
+                ]
             },
         )
 
-        # Item mapping JSON template
+        # Item mapping JSON template (folio_migration_tools format)
         self._write_json_template(
             "item_mapping.json",
             {
-                "legacy_id_field": "item_id",
-                "barcode_field": "barcode",
-                "callNumber_field": "call_number",
-                "materialType_field": "material_type",
-                "permanentLoanType_field": "loan_type",
-                "status_field": "status",
-                "permanentLocation_field": "location",
+                "data": [
+                    {"folio_field": "barcode", "legacy_field": "BARCODE", "value": "", "description": ""},
+                    {"folio_field": "legacyIdentifier", "legacy_field": "ITEM_ID", "value": "", "description": ""},
+                    {"folio_field": "holdingsRecordId", "legacy_field": "HOLDINGS_ID", "value": "", "description": ""},
+                    {"folio_field": "itemLevelCallNumber", "legacy_field": "CALL_NUMBER", "value": "", "description": ""},
+                    {"folio_field": "materialTypeId", "legacy_field": "MATERIAL_TYPE", "value": "", "description": ""},
+                    {"folio_field": "permanentLoanTypeId", "legacy_field": "LOAN_TYPE", "value": "", "description": ""},
+                    {"folio_field": "status.name", "legacy_field": "STATUS", "value": "", "description": ""},
+                    {"folio_field": "permanentLocationId", "legacy_field": "LOCATION", "value": "", "description": ""},
+                    {"folio_field": "copyNumber", "legacy_field": "COPY_NUMBER", "value": "", "description": ""},
+                    {"folio_field": "volume", "legacy_field": "Not mapped", "value": "", "description": ""},
+                    {"folio_field": "enumeration", "legacy_field": "Not mapped", "value": "", "description": ""},
+                    {"folio_field": "chronology", "legacy_field": "Not mapped", "value": "", "description": ""},
+                    {"folio_field": "notes[0].note", "legacy_field": "NOTE", "value": "", "description": ""},
+                    {"folio_field": "notes[0].itemNoteTypeId", "legacy_field": "Not mapped", "value": "", "description": ""},
+                    {"folio_field": "notes[0].staffOnly", "legacy_field": "Not mapped", "value": False, "description": ""},
+                ]
             },
         )
 
-        # Holdings mapping JSON template
+        # Holdings mapping JSON template (folio_migration_tools format)
         self._write_json_template(
             "holdingsrecord_mapping.json",
             {
-                "legacy_id_field": "holdings_id",
-                "instanceId_field": "bib_id",
-                "callNumber_field": "call_number",
-                "permanentLocation_field": "location",
+                "data": [
+                    {"folio_field": "legacyIdentifier", "legacy_field": "HOLDINGS_ID", "value": "", "description": ""},
+                    {"folio_field": "instanceId", "legacy_field": "BIB_ID", "value": "", "description": ""},
+                    {"folio_field": "permanentLocationId", "legacy_field": "LOCATION", "value": "", "description": ""},
+                    {"folio_field": "callNumber", "legacy_field": "CALL_NUMBER", "value": "", "description": ""},
+                    {"folio_field": "callNumberTypeId", "legacy_field": "Not mapped", "value": "", "description": ""},
+                    {"folio_field": "callNumberPrefix", "legacy_field": "Not mapped", "value": "", "description": ""},
+                    {"folio_field": "callNumberSuffix", "legacy_field": "Not mapped", "value": "", "description": ""},
+                    {"folio_field": "holdingsTypeId", "legacy_field": "Not mapped", "value": "", "description": ""},
+                    {"folio_field": "copyNumber", "legacy_field": "Not mapped", "value": "", "description": ""},
+                    {"folio_field": "notes[0].note", "legacy_field": "NOTE", "value": "", "description": ""},
+                    {"folio_field": "notes[0].holdingsNoteTypeId", "legacy_field": "Not mapped", "value": "", "description": ""},
+                    {"folio_field": "notes[0].staffOnly", "legacy_field": "Not mapped", "value": True, "description": ""},
+                    {"folio_field": "holdingsStatements[0].statement", "legacy_field": "Not mapped", "value": "", "description": ""},
+                ]
             },
         )
 
@@ -361,11 +393,14 @@ class ConfigService:
         self._write_json_template(
             "course_mapping.json",
             {
-                "course_number_field": "course_code",
-                "course_name_field": "course_name",
-                "instructor_field": "instructor",
-                "term_field": "term",
-                "department_field": "department",
+                "data": [
+                    {"folio_field": "courseNumber", "legacy_field": "COURSE_CODE", "value": "", "description": ""},
+                    {"folio_field": "name", "legacy_field": "COURSE_NAME", "value": "", "description": ""},
+                    {"folio_field": "sectionName", "legacy_field": "SECTION", "value": "", "description": ""},
+                    {"folio_field": "termId", "legacy_field": "TERM", "value": "", "description": ""},
+                    {"folio_field": "departmentId", "legacy_field": "DEPARTMENT", "value": "", "description": ""},
+                    {"folio_field": "courseListingId", "legacy_field": "Not mapped", "value": "", "description": ""},
+                ]
             },
         )
 
@@ -376,14 +411,23 @@ class ConfigService:
             [["FALL2024", "Fall 2024"], ["SPRING2025", "Spring 2025"]],
         )
 
-        # Organization mapping JSON template
+        # Organization mapping JSON template (folio_migration_tools format)
         self._write_json_template(
             "organization_mapping.json",
             {
-                "legacy_id_field": "vendor_id",
-                "name_field": "vendor_name",
-                "code_field": "vendor_code",
-                "status_field": "status",
+                "data": [
+                    {"folio_field": "legacyIdentifier", "legacy_field": "VENDOR_ID", "value": "", "description": ""},
+                    {"folio_field": "name", "legacy_field": "VENDOR_NAME", "value": "", "description": ""},
+                    {"folio_field": "code", "legacy_field": "VENDOR_CODE", "value": "", "description": ""},
+                    {"folio_field": "status", "legacy_field": "STATUS", "value": "Active", "description": ""},
+                    {"folio_field": "isVendor", "legacy_field": "Not mapped", "value": True, "description": ""},
+                    {"folio_field": "accounts[0].accountNo", "legacy_field": "ACCOUNT_NO", "value": "", "description": ""},
+                    {"folio_field": "accounts[0].accountStatus", "legacy_field": "Not mapped", "value": "Active", "description": ""},
+                    {"folio_field": "addresses[0].addressLine1", "legacy_field": "ADDRESS1", "value": "", "description": ""},
+                    {"folio_field": "addresses[0].city", "legacy_field": "CITY", "value": "", "description": ""},
+                    {"folio_field": "emails[0].value", "legacy_field": "EMAIL", "value": "", "description": ""},
+                    {"folio_field": "phoneNumbers[0].phoneNumber", "legacy_field": "PHONE", "value": "", "description": ""},
+                ]
             },
         )
 
@@ -391,24 +435,37 @@ class ConfigService:
         self._write_json_template(
             "composite_order_mapping.json",
             {
-                "order_number_field": "po_number",
-                "vendor_field": "vendor_code",
-                "order_type_field": "order_type",
-                "title_field": "title",
-                "quantity_field": "quantity",
-                "price_field": "unit_price",
+                "data": [
+                    {"folio_field": "legacyIdentifier", "legacy_field": "PO_NUMBER", "value": "", "description": ""},
+                    {"folio_field": "poNumber", "legacy_field": "PO_NUMBER", "value": "", "description": ""},
+                    {"folio_field": "vendor", "legacy_field": "VENDOR_CODE", "value": "", "description": ""},
+                    {"folio_field": "orderType", "legacy_field": "ORDER_TYPE", "value": "One-Time", "description": ""},
+                    {"folio_field": "compositePoLines[0].titleOrPackage", "legacy_field": "TITLE", "value": "", "description": ""},
+                    {"folio_field": "compositePoLines[0].cost.listUnitPrice", "legacy_field": "UNIT_PRICE", "value": "", "description": ""},
+                    {"folio_field": "compositePoLines[0].cost.quantityPhysical", "legacy_field": "QUANTITY", "value": "", "description": ""},
+                    {"folio_field": "compositePoLines[0].cost.currency", "legacy_field": "Not mapped", "value": "USD", "description": ""},
+                    {"folio_field": "compositePoLines[0].orderFormat", "legacy_field": "Not mapped", "value": "Physical Resource", "description": ""},
+                    {"folio_field": "compositePoLines[0].source", "legacy_field": "Not mapped", "value": "User", "description": ""},
+                ]
             },
         )
 
-        # Fee/fine mapping JSON template
+        # Fee/fine mapping JSON template (folio_migration_tools format)
         self._write_json_template(
             "manual_feefines_map.json",
             {
-                "user_barcode_field": "patron_barcode",
-                "item_barcode_field": "item_barcode",
-                "fee_type_field": "fine_type",
-                "amount_field": "amount",
-                "date_field": "fine_date",
+                "data": [
+                    {"folio_field": "legacyIdentifier", "legacy_field": "", "value": "", "description": "Leave this blank."},
+                    {"folio_field": "account.amount", "legacy_field": "AMOUNT", "value": "", "description": "The original amount."},
+                    {"folio_field": "account.remaining", "legacy_field": "REMAINING", "value": "", "description": "The remaining amount."},
+                    {"folio_field": "account.paymentStatus.name", "legacy_field": "", "value": "Outstanding", "description": ""},
+                    {"folio_field": "account.status.name", "legacy_field": "", "value": "Open", "description": ""},
+                    {"folio_field": "account.userId", "legacy_field": "PATRON_BARCODE", "value": "", "description": "The patron's barcode."},
+                    {"folio_field": "account.itemId", "legacy_field": "ITEM_BARCODE", "value": "", "description": "Optional - the barcode of an item."},
+                    {"folio_field": "account.feeFineId", "legacy_field": "FEE_TYPE", "value": "", "description": "The fee/fine type."},
+                    {"folio_field": "account.ownerId", "legacy_field": "OWNER", "value": "", "description": "The fee/fine owner."},
+                    {"folio_field": "feefineaction.dateAction", "legacy_field": "DATE", "value": "", "description": "The date of the fee/fine."},
+                ]
             },
         )
 
