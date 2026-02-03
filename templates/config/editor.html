@@ -40,7 +40,11 @@ async function loadConfig() {
         const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/config/${filename}`);
         if (!response.ok) {
             const error = await response.json();
-            throw new Error(error.detail || 'Failed to load configuration');
+            let errorMsg = 'Failed to load configuration';
+            if (error.detail) {
+                errorMsg = typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail);
+            }
+            throw new Error(errorMsg);
         }
 
         const data = await response.json();
@@ -68,7 +72,7 @@ async function loadConfig() {
         }
 
     } catch (error) {
-        showResult(false, error.message);
+        showResult(false, error.message || String(error));
     }
 }
 
@@ -132,18 +136,19 @@ async function saveConfig() {
 
         if (!response.ok) {
             const error = await response.json();
-            if (error.detail && error.detail.errors) {
+            if (error.detail && typeof error.detail === 'object' && error.detail.errors) {
                 const errors = error.detail.errors.map(e => `${e.loc.join('.')}: ${e.msg}`).join('\n');
                 throw new Error(`Validation failed:\n${errors}`);
             }
-            throw new Error(error.detail || 'Failed to save');
+            let errorMsg = typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail) || 'Failed to save';
+            throw new Error(errorMsg);
         }
 
         showResult(true, 'Configuration saved successfully');
         originalContent = content;
 
     } catch (error) {
-        showResult(false, error.message);
+        showResult(false, error.message || String(error));
     }
 }
 
