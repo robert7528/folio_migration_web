@@ -328,6 +328,8 @@ class ExecutionService:
         - "14 records processed"
         - "Processed 100 of 1000 records"
         - "Posted 50 records"
+        - "Posting successful! Total rows: 128 Total failed: 0 created: 0 updated: 128"
+        - "Done posting 128 records."
         """
         result = {}
 
@@ -347,6 +349,24 @@ class ExecutionService:
         match = re.search(r"Saving map of (\d+) old and new IDs", line, re.IGNORECASE)
         if match:
             result["success"] = int(match.group(1))
+
+        # BatchPoster: "Posting successful! Total rows: 128 Total failed: 0 created: 0 updated: 128"
+        match = re.search(r"Posting successful!.*Total rows:\s*(\d+).*Total failed:\s*(\d+)", line, re.IGNORECASE)
+        if match:
+            total_rows = int(match.group(1))
+            total_failed = int(match.group(2))
+            result["total"] = total_rows
+            result["processed"] = total_rows
+            result["success"] = total_rows - total_failed
+            result["errors"] = total_failed
+
+        # BatchPoster: "Done posting 128 records."
+        match = re.search(r"Done posting (\d+) records", line, re.IGNORECASE)
+        if match:
+            count = int(match.group(1))
+            result["total"] = count
+            result["processed"] = count
+            result["success"] = count
 
         # BatchPoster: "Posted 100 records" or "Posted 100 Instance"
         match = re.search(r"Posted (\d+)", line, re.IGNORECASE)
