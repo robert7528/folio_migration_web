@@ -252,7 +252,7 @@ async def delete_file(
         raise HTTPException(status_code=404, detail="File not found")
 
     # Prevent deleting critical files
-    protected_files = [".env", "CLIENT_INFO.md", "mapping_files/marc_config.json"]
+    protected_files = [".env", "CLIENT_INFO.md", "mapping_files/migration_config.json", "mapping_files/library_config.json"]
     rel_path = str(full_path.relative_to(client_path))
     if rel_path in protected_files:
         raise HTTPException(status_code=403, detail="Cannot delete protected file")

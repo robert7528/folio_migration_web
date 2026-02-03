@@ -234,9 +234,10 @@ async def delete_config(
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=403, detail="Invalid filename")
 
-    # Protect the main config file
-    if filename == "marc_config.json":
-        raise HTTPException(status_code=403, detail="Cannot delete the main configuration file")
+    # Protect core config files
+    protected_files = ["migration_config.json", "library_config.json"]
+    if filename in protected_files:
+        raise HTTPException(status_code=403, detail="Cannot delete core configuration files")
 
     if not config_path.exists():
         raise HTTPException(status_code=404, detail=f"Config file '{filename}' not found")

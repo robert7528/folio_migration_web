@@ -44,17 +44,16 @@ class ProjectService:
         """
         Create a new client migration project.
 
-        This replicates the 10 steps from setup_client.sh:
+        Steps:
         1. Clone migration_repo_template
         2. Initialize Git
         3. Create virtual environment
         4. Install folio_migration_tools
         5. Create .env
         6. Create CLIENT_INFO.md
-        7. Create marc_config.json
+        7. Create configuration files (library_config.json, task configs, mapping templates)
         8. Create folder structure
-        9. Create migration script
-        10. Update .gitignore
+        9. Update .gitignore
 
         Args:
             client: Client creation data
@@ -112,7 +111,7 @@ class ProjectService:
             self._create_client_info(client_path, client, start_date, result.get("tool_version"))
             result["steps"].append({"step": 6, "name": "create_client_info", "status": "success"})
 
-            # Step 7: Create marc_config.json
+            # Step 7: Create configuration files
             self._create_config(client_path, client)
             result["steps"].append({"step": 7, "name": "create_config", "status": "success"})
 
@@ -121,13 +120,9 @@ class ProjectService:
             create_iteration_folders(client_path, iteration_name)
             result["steps"].append({"step": 8, "name": "create_folders", "status": "success"})
 
-            # Step 9: Create migration script
-            self._create_migration_script(client_path)
-            result["steps"].append({"step": 9, "name": "create_script", "status": "success"})
-
-            # Step 10: Update .gitignore
+            # Step 9: Update .gitignore
             self._update_gitignore(client_path)
-            result["steps"].append({"step": 10, "name": "update_gitignore", "status": "success"})
+            result["steps"].append({"step": 9, "name": "update_gitignore", "status": "success"})
 
             result["status"] = "success"
 
@@ -289,139 +284,6 @@ PASSWORD=
 
         # Generate combined config for CLI
         config_service.generate_combined_config()
-
-        # Also create the legacy marc_config.json for backward compatibility
-        self._create_legacy_marc_config(client_path, client)
-
-    def _create_legacy_marc_config(self, client_path: Path, client: ClientCreate):
-        """Create legacy marc_config.json for backward compatibility."""
-        config = {
-            "libraryInformation": {
-                "tenantId": client.tenant_id,
-                "multiFieldDelimiter": "<^>",
-                "okapiUrl": client.folio_url,
-                "okapiUsername": "",
-                "logLevelDebug": False,
-                "libraryName": client.client_name,
-                "folioRelease": "sunflower",
-                "addTimeStampToFileNames": False,
-                "iterationIdentifier": f"{client.client_code}_migration",
-            },
-            "migrationTasks": [
-                {
-                    "name": "transform_bibs",
-                    "addAdministrativeNotesWithLegacyIds": True,
-                    "migrationTaskType": "BibsTransformer",
-                    "hridHandling": "default",
-                    "ilsFlavour": "tag001",
-                    "tags_to_delete": [],
-                    "files": [{"file_name": "bibs.mrc", "discovery_suppressed": False}],
-                    "updateHridSettings": False,
-                },
-                {
-                    "name": "post_instances",
-                    "migrationTaskType": "BatchPoster",
-                    "objectType": "Instances",
-                    "batchSize": 250,
-                    "files": [{"file_name": "folio_instances_transform_bibs.json"}],
-                },
-                {
-                    "name": "post_srs_bibs",
-                    "migrationTaskType": "BatchPoster",
-                    "objectType": "SRS",
-                    "batchSize": 250,
-                    "files": [{"file_name": "folio_srs_instances_transform_bibs.json"}],
-                },
-            ],
-        }
-
-        config_dir = client_path / "mapping_files"
-        config_dir.mkdir(parents=True, exist_ok=True)
-        config_path = config_dir / "marc_config.json"
-        config_path.write_text(json.dumps(config, indent=4, ensure_ascii=False), encoding="utf-8")
-
-    def _create_migration_script(self, client_path: Path):
-        """Create migrate_bibs.sh script."""
-        script_content = '''#!/bin/bash
-# Bibliographic Migration Script
-
-set -e
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
-
-CLIENT_CODE=$(basename "$SCRIPT_DIR")
-CONFIG_FILE="mapping_files/marc_config.json"
-
-echo "======================================"
-echo "  $CLIENT_CODE - FOLIO Bibliographic Migration"
-echo "======================================"
-
-# Activate virtual environment
-source .venv/bin/activate
-
-# Check configuration file
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Error: Configuration file $CONFIG_FILE not found"
-    exit 1
-fi
-
-# Check .env
-if [ ! -f ".env" ]; then
-    echo "Error: .env file not found"
-    exit 1
-fi
-
-# Confirm execution
-read -p "Confirm migration execution? (y/N): " confirm
-if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
-    echo "Cancelled"
-    exit 0
-fi
-
-# Record start time
-START_TIME=$(date +%s)
-LOG_FILE="logs/migration_$(date +%Y%m%d_%H%M%S).log"
-mkdir -p logs
-
-echo "Start time: $(date)" | tee -a "$LOG_FILE"
-
-# Execute migration
-echo ""
-echo "Step 1/3: Transforming bibliographic data..." | tee -a "$LOG_FILE"
-folio-migration-tools "$CONFIG_FILE" --base_folder_path ./ transform_bibs 2>&1 | tee -a "$LOG_FILE"
-
-echo ""
-echo "Step 2/3: Posting Instances..." | tee -a "$LOG_FILE"
-folio-migration-tools "$CONFIG_FILE" --base_folder_path ./ post_instances 2>&1 | tee -a "$LOG_FILE"
-
-echo ""
-echo "Step 3/3: Posting SRS..." | tee -a "$LOG_FILE"
-folio-migration-tools "$CONFIG_FILE" --base_folder_path ./ post_srs_bibs 2>&1 | tee -a "$LOG_FILE"
-
-# Calculate execution time
-END_TIME=$(date +%s)
-DURATION=$((END_TIME - START_TIME))
-echo ""
-echo "======================================"
-echo "Migration Complete!"
-echo "End time: $(date)"
-echo "Duration: $((DURATION / 60)) min $((DURATION % 60)) sec"
-echo "======================================"
-echo ""
-echo "Reports: iterations/*/reports/"
-echo "Log file: $LOG_FILE"
-
-deactivate
-'''
-        script_path = client_path / "migrate_bibs.sh"
-        script_path.write_text(script_content, encoding="utf-8")
-
-        # Make executable on Unix
-        try:
-            script_path.chmod(0o755)
-        except (OSError, AttributeError):
-            pass
 
     def _update_gitignore(self, client_path: Path):
         """Update .gitignore with client-specific entries."""
