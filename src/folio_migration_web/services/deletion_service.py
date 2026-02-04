@@ -86,15 +86,44 @@ class FolioDeletionClient(FolioApiClient):
             item_id
         )
 
-    async def delete_user(self, user_id: str) -> Dict[str, Any]:
-        """Delete a single user from FOLIO."""
-        # First delete the user's request preference (if exists)
-        await self._delete_user_request_preference(user_id)
-        # Then delete the user
+    async def delete_user(self, user_id: str, external_system_id: str = None) -> Dict[str, Any]:
+        """Delete a single user from FOLIO.
+
+        Args:
+            user_id: The user ID from the JSON file (may differ from FOLIO's actual UUID)
+            external_system_id: The externalSystemId to look up the actual FOLIO user
+        """
+        actual_user_id = user_id
+
+        # If externalSystemId is provided, look up the actual user UUID from FOLIO
+        if external_system_id:
+            folio_user = await self._get_user_by_external_id(external_system_id)
+            if folio_user:
+                actual_user_id = folio_user.get("id", user_id)
+
+        # First delete the user's request preference (if exists) using actual UUID
+        await self._delete_user_request_preference(actual_user_id)
+        # Then delete the user using actual UUID
         return await self._delete_record(
-            f"/users/{user_id}",
-            user_id
+            f"/users/{actual_user_id}",
+            actual_user_id
         )
+
+    async def _get_user_by_external_id(self, external_id: str) -> Optional[Dict]:
+        """Get user from FOLIO by externalSystemId."""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                url = f"{self.folio_url}/users"
+                params = {"query": f'externalSystemId=="{external_id}"', "limit": 1}
+                response = await client.get(url, headers=self.headers, params=params)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    users = data.get("users", [])
+                    return users[0] if users else None
+                return None
+        except Exception:
+            return None
 
     async def _delete_user_request_preference(self, user_id: str) -> Dict[str, Any]:
         """Delete request preference for a user (if exists).
@@ -235,26 +264,28 @@ class DeletionService:
 
         # Load records to get UUIDs
         records = self._load_records(output_file, record_type)
-        record_ids = [r.get("id") for r in records if r.get("id")]
+        # Filter records that have an id field
+        records_with_id = [r for r in records if r.get("id")]
 
         # Create summary
         summary = DeletionSummary(
             record_type=record_type.value,
-            total_records=len(record_ids),
+            total_records=len(records_with_id),
             started_at=datetime.now(),
         )
 
         # Update deletion record
-        deletion_record.total_records = len(record_ids)
+        deletion_record.total_records = len(records_with_id)
         deletion_record.status = "running"
         deletion_record.started_at = summary.started_at
         self.db.commit()
 
         # Delete records
-        for i, record_id in enumerate(record_ids):
+        for i, record in enumerate(records_with_id):
+            record_id = record.get("id")
             try:
                 result = await self._delete_single_record(
-                    record_id, record_type, folio_client, cascade
+                    record_id, record_type, folio_client, cascade, local_record=record
                 )
 
                 if result["status"] == "deleted":
@@ -284,7 +315,7 @@ class DeletionService:
                 })
 
             # Update progress
-            progress = ((i + 1) / len(record_ids)) * 100 if record_ids else 100
+            progress = ((i + 1) / len(records_with_id)) * 100 if records_with_id else 100
             deletion_record.deleted_count = summary.deleted_count
             deletion_record.failed_count = summary.failed_count
             deletion_record.skipped_count = summary.skipped_count
@@ -310,8 +341,17 @@ class DeletionService:
         record_type: RecordType,
         folio_client: FolioDeletionClient,
         cascade: bool,
+        local_record: Dict = None,
     ) -> Dict[str, Any]:
-        """Delete a single record with optional cascade."""
+        """Delete a single record with optional cascade.
+
+        Args:
+            record_id: The record ID from the JSON file
+            record_type: Type of record (instances, holdings, items, users)
+            folio_client: FOLIO API client
+            cascade: Whether to delete dependent records first
+            local_record: The full record from JSON (used to get externalSystemId for users)
+        """
 
         if record_type == RecordType.INSTANCES:
             if cascade:
@@ -338,7 +378,9 @@ class DeletionService:
             return await folio_client.delete_item(record_id)
 
         elif record_type == RecordType.USERS:
-            return await folio_client.delete_user(record_id)
+            # For users, use externalSystemId to look up actual FOLIO UUID
+            external_system_id = local_record.get("externalSystemId") if local_record else None
+            return await folio_client.delete_user(record_id, external_system_id)
 
         return {"status": "skipped", "error": f"Unsupported record type: {record_type}"}
 
