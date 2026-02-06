@@ -576,6 +576,9 @@ async function loadTasks() {
                                     <button class="btn btn-sm btn-secondary" onclick="showTaskConfig('${taskType}')">
                                         Configure
                                     </button>
+                                    <button class="btn btn-sm btn-warning" onclick="regenerateTaskConfig('${taskType}')" title="Regenerate with latest defaults">
+                                        Regenerate
+                                    </button>
                                 </td>
                             </tr>
                         `;
@@ -606,6 +609,35 @@ async function toggleTask(taskType, enabled) {
     } catch (error) {
         alert('Error: ' + error.message);
         await loadTasks(); // Reload to reset checkbox state
+    }
+}
+
+async function regenerateTaskConfig(taskType) {
+    const task = tasksData[taskType];
+    if (!confirm(`Regenerate "${task.name}" configuration with latest defaults?\n\nThis will replace the current task settings but preserve the enabled/disabled status.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/tasks/${taskType}/regenerate`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to regenerate task config');
+        }
+
+        const result = await response.json();
+        alert(`Task "${task.name}" configuration regenerated successfully.`);
+
+        // Reload tasks and refresh config editor if open
+        await loadTasks();
+        if (currentTaskType === taskType) {
+            await showTaskConfig(taskType);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
     }
 }
 

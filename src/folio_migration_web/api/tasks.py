@@ -259,3 +259,47 @@ async def disable_task(
     config_service.enable_task(task_type, False)
 
     return {"status": "success", "message": f"Task '{task_type}' disabled"}
+
+
+@router.post("/{task_type}/regenerate")
+async def regenerate_task_config(
+    client_code: str,
+    task_type: str,
+    db: Session = Depends(get_db),
+    project_service: ProjectService = Depends(get_project_service),
+):
+    """Regenerate task configuration with latest default settings.
+
+    This will replace the existing task config with fresh defaults,
+    preserving the enabled/disabled status.
+    """
+    client = db.query(ClientModel).filter(ClientModel.client_code == client_code).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client '{client_code}' not found")
+
+    if task_type not in TASK_DEFINITIONS:
+        raise HTTPException(status_code=400, detail=f"Unknown task type: {task_type}")
+
+    client_path = project_service.get_client_path(client_code)
+    if not client_path.exists():
+        raise HTTPException(status_code=404, detail="Client directory not found")
+
+    config_service = get_config_service(client_path)
+
+    # Preserve current enabled status
+    old_config = config_service.get_task_config(task_type)
+    was_enabled = old_config.get("enabled", False) if old_config else False
+
+    # Regenerate task config
+    new_config = config_service.generate_task_config(task_type)
+
+    # Restore enabled status
+    if was_enabled:
+        config_service.enable_task(task_type, True)
+        new_config["enabled"] = True
+
+    return {
+        "status": "success",
+        "message": f"Task '{task_type}' configuration regenerated",
+        "config": new_config,
+    }
