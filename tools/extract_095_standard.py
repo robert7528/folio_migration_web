@@ -18,6 +18,7 @@ Output:
 
 import sys
 import csv
+import re
 from pathlib import Path
 
 try:
@@ -25,6 +26,13 @@ try:
 except ImportError:
     print("ERROR: pymarc not installed. Run: pip install pymarc")
     sys.exit(1)
+
+
+def normalize_whitespace(text):
+    """Normalize whitespace: collapse multiple spaces to single space and strip."""
+    if not text:
+        return ''
+    return re.sub(r'\s+', ' ', text).strip()
 
 
 def extract_095_data(marc_file):
@@ -69,7 +77,7 @@ def extract_095_data(marc_file):
                 }
 
                 for subfield in f095:
-                    code, value = subfield[0], subfield[1].strip()
+                    code, value = subfield[0], normalize_whitespace(subfield[1])
                     if code == 'a':
                         data['library'] = value
                     elif code == 'b':
