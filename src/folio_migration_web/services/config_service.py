@@ -704,6 +704,7 @@ class ConfigService:
                 "loanTypesMapFileName": "loan_types.tsv",
                 "itemStatusesMapFileName": "item_statuses.tsv",
                 "defaultCallNumberTypeName": "Library of Congress classification",
+                "defaultLoanTypeName": "Can circulate",
                 "hridHandling": "default",
                 "files": [{"file_name": "items.tsv"}],
                 "updateHridSettings": False,
