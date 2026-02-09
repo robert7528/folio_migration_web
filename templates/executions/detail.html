@@ -64,11 +64,18 @@
                     <div class="stat-value" id="success-count">0</div>
                     <div class="stat-label">Success</div>
                 </div>
+                <div class="stat-box stat-merged" id="merged-box" style="display: none;">
+                    <div class="stat-value" id="merged-count">0</div>
+                    <div class="stat-label">Merged</div>
+                </div>
                 <div class="stat-box stat-error">
                     <div class="stat-value" id="error-count">0</div>
                     <div class="stat-label">Errors</div>
                 </div>
             </div>
+
+            <!-- Summary message -->
+            <div id="summary-message" class="mt-2 text-center" style="display: none; color: var(--text-light); font-size: 0.9rem;"></div>
         </div>
     </div>
 
@@ -136,6 +143,10 @@
 
 .stat-success .stat-value {
     color: var(--success-color);
+}
+
+.stat-merged .stat-value {
+    color: #9b59b6;  /* Purple for merged/deduplicated */
 }
 
 .stat-error .stat-value {
@@ -237,6 +248,18 @@ function renderExecution() {
     document.getElementById('processed-records').textContent = execution.processed_records;
     document.getElementById('success-count').textContent = execution.success_count;
     document.getElementById('error-count').textContent = execution.error_count;
+
+    // Merged count (show only if > 0)
+    const mergedCount = execution.merged_count || 0;
+    if (mergedCount > 0) {
+        document.getElementById('merged-count').textContent = mergedCount;
+        document.getElementById('merged-box').style.display = 'block';
+
+        // Show summary message: "65 Success + 8 Merged = 73 Processed"
+        const summaryMsg = document.getElementById('summary-message');
+        summaryMsg.textContent = `${execution.success_count} 筆成功 + ${mergedCount} 筆合併 = ${execution.total_records} 筆處理完成`;
+        summaryMsg.style.display = 'block';
+    }
 
     // Progress
     const progress = execution.progress_percent || 0;

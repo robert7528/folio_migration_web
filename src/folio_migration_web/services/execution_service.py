@@ -293,6 +293,8 @@ class ExecutionService:
                             execution.success_count = stats["success"]
                         if stats.get("errors"):
                             execution.error_count = stats["errors"]
+                        if stats.get("merged"):
+                            execution.merged_count = stats["merged"]
                         if execution.total_records > 0:
                             execution.progress_percent = (
                                 execution.processed_records / execution.total_records * 100
@@ -490,6 +492,20 @@ class ExecutionService:
                     error_count = int(match.group(1))
                     if error_count > 0:
                         result["errors"] = error_count
+                    break
+
+            # Merged/duplicate records patterns (not errors, just merged)
+            merged_patterns = [
+                r"Holdings already created from Item\s*\|\s*(\d+)",
+                r"Items already created\s*\|\s*(\d+)",
+                r"(?:Merged|Duplicate)\s*\|\s*(\d+)",
+            ]
+            for pattern in merged_patterns:
+                match = re.search(pattern, content, re.IGNORECASE)
+                if match:
+                    merged_count = int(match.group(1))
+                    if merged_count > 0:
+                        result["merged"] = merged_count
                     break
 
             # Processed records (usually same as success + errors or total)

@@ -65,6 +65,7 @@ class Execution(Base):
     processed_records = Column(Integer, default=0)
     success_count = Column(Integer, default=0)
     error_count = Column(Integer, default=0)
+    merged_count = Column(Integer, default=0)  # Records merged/deduplicated
     progress_percent = Column(Float, default=0.0)
 
     # Timing

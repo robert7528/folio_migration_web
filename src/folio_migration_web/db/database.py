@@ -40,3 +40,28 @@ def init_db():
     """Initialize database tables."""
     from . import models  # noqa: F401
     Base.metadata.create_all(bind=engine)
+
+    # Run migrations for new columns
+    _run_migrations()
+
+
+def _run_migrations():
+    """Add new columns to existing tables (SQLite doesn't support ALTER TABLE well)."""
+    from sqlalchemy import text
+
+    migrations = [
+        # Add merged_count column to executions table
+        ("executions", "merged_count", "ALTER TABLE executions ADD COLUMN merged_count INTEGER DEFAULT 0"),
+    ]
+
+    with engine.connect() as conn:
+        for table, column, sql in migrations:
+            # Check if column exists
+            result = conn.execute(text(f"PRAGMA table_info({table})"))
+            columns = [row[1] for row in result.fetchall()]
+            if column not in columns:
+                try:
+                    conn.execute(text(sql))
+                    conn.commit()
+                except Exception:
+                    pass  # Column might already exist

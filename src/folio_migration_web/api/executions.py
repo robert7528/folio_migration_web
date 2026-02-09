@@ -51,6 +51,7 @@ class ExecutionResponse(BaseModel):
     processed_records: int
     success_count: int
     error_count: int
+    merged_count: int = 0  # Records merged/deduplicated
     progress_percent: float
     started_at: Optional[datetime]
     completed_at: Optional[datetime]
@@ -345,6 +346,7 @@ async def get_execution_results(
             "processed_records": execution.processed_records,
             "success_count": execution.success_count,
             "error_count": execution.error_count,
+            "merged_count": execution.merged_count or 0,
             "duration_seconds": execution.duration_seconds,
         },
         "summary": summary,
