@@ -10,6 +10,7 @@ from ..db.database import get_db
 from ..db.models import Client as ClientModel
 from ..models.client import ClientCredentials, ConnectionTestResult
 from ..utils.encryption import get_credential_manager
+from ..services.config_service import get_config_service
 
 router = APIRouter(prefix="/api/clients/{client_code}/credentials", tags=["credentials"])
 settings = get_settings()
@@ -78,9 +79,26 @@ async def set_credentials(
     # Update library_config.json with username
     _update_library_config_username(client_code, credentials.username)
 
+    # Fetch reference data from FOLIO and update mapping files
+    reference_data_updated = False
+    try:
+        config_service = get_config_service(settings.get_client_dir(client_code))
+        reference_data = await config_service.fetch_folio_reference_data(
+            client.folio_url,
+            client.tenant_id,
+            credentials.username,
+            password_to_save,
+        )
+        if reference_data.get("holdings_note_type_id") or reference_data.get("item_note_type_id"):
+            config_service.update_mapping_with_reference_data(reference_data)
+            reference_data_updated = True
+    except Exception:
+        pass  # Silently fail - mapping files can be updated manually
+
     return {
         "status": "success",
         "message": "Credentials saved successfully",
+        "reference_data_updated": reference_data_updated,
     }
 
 
@@ -243,6 +261,55 @@ async def _test_folio_connection(
                 success=False,
                 message="Connection timed out",
             )
+
+
+@router.post("/refresh-reference-data")
+async def refresh_reference_data(
+    client_code: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Fetch reference data from FOLIO and update mapping files.
+
+    This includes holdings note type ID, item note type ID, etc.
+    Requires credentials to be set.
+    """
+    client = db.query(ClientModel).filter(ClientModel.client_code == client_code).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client '{client_code}' not found")
+
+    if not client.credentials_set:
+        raise HTTPException(status_code=400, detail="Credentials not set")
+
+    manager = get_credential_manager()
+    username = manager.decrypt(client.encrypted_username)
+    password = manager.decrypt(client.encrypted_password)
+
+    try:
+        config_service = get_config_service(settings.get_client_dir(client_code))
+        reference_data = await config_service.fetch_folio_reference_data(
+            client.folio_url,
+            client.tenant_id,
+            username,
+            password,
+        )
+
+        if not reference_data.get("holdings_note_type_id") and not reference_data.get("item_note_type_id"):
+            return {
+                "status": "warning",
+                "message": "Could not fetch reference data from FOLIO",
+                "reference_data": reference_data,
+            }
+
+        config_service.update_mapping_with_reference_data(reference_data)
+
+        return {
+            "status": "success",
+            "message": "Reference data updated successfully",
+            "reference_data": reference_data,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch reference data: {str(e)}")
 
 
 def _update_env_file(client_code: str, username: str, password: str):

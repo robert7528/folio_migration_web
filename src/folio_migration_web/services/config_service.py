@@ -5,9 +5,11 @@ This module handles:
 - Generation of mapping file templates
 - Merging configs into a single migration config
 - Syncing libraryInformation when project info changes
+- Fetching reference data from FOLIO API
 """
 
 import json
+import httpx
 from pathlib import Path
 from typing import Any, Optional
 from datetime import date
@@ -348,26 +350,26 @@ class ConfigService:
             "item_mapping.json",
             {
                 "data": [
-                    {"folio_field": "barcode", "legacy_field": "BARCODE", "value": "", "description": ""},
-                    {"folio_field": "legacyIdentifier", "legacy_field": "ITEM_ID", "value": "", "description": ""},
+                    {"folio_field": "barcode", "legacy_field": "BARCODE", "value": "", "description": "Item barcode"},
+                    {"folio_field": "legacyIdentifier", "legacy_field": "ITEM_ID", "value": "", "description": "Legacy item ID"},
                     {"folio_field": "formerIds[0]", "legacy_field": "ITEM_ID", "value": "", "description": "Preserve legacy item ID"},
                     {"folio_field": "formerIds[1]", "legacy_field": "BIB_ID", "value": "", "description": "Preserve legacy bib ID"},
                     {"folio_field": "hrid", "legacy_field": "Not mapped", "value": "", "description": "Human readable ID"},
-                    {"folio_field": "holdingsRecordId", "legacy_field": "HOLDINGS_ID", "value": "", "description": ""},
-                    {"folio_field": "itemLevelCallNumber", "legacy_field": "CALL_NUMBER", "value": "", "description": ""},
-                    {"folio_field": "materialTypeId", "legacy_field": "MATERIAL_TYPE", "value": "", "description": ""},
-                    {"folio_field": "permanentLoanTypeId", "legacy_field": "LOAN_TYPE", "value": "", "description": ""},
-                    {"folio_field": "status.name", "legacy_field": "STATUS", "value": "", "description": ""},
-                    {"folio_field": "permanentLocationId", "legacy_field": "LOCATION", "value": "", "description": ""},
+                    {"folio_field": "holdingsRecordId", "legacy_field": "HOLDINGS_ID", "value": "", "description": "Link to holdings"},
+                    {"folio_field": "itemLevelCallNumber", "legacy_field": "CALL_NUMBER", "value": "", "description": "Item level call number"},
+                    {"folio_field": "materialTypeId", "legacy_field": "MATERIAL_TYPE", "value": "", "description": "Material type"},
+                    {"folio_field": "permanentLoanTypeId", "legacy_field": "LOAN_TYPE", "value": "", "description": "Loan type"},
+                    {"folio_field": "status.name", "legacy_field": "STATUS", "value": "", "description": "Item status"},
+                    {"folio_field": "permanentLocationId", "legacy_field": "LOCATION", "value": "", "description": "Permanent location"},
                     {"folio_field": "temporaryLocationId", "legacy_field": "Not mapped", "value": "", "description": "Temporary location"},
-                    {"folio_field": "copyNumber", "legacy_field": "COPY_NUMBER", "value": "", "description": ""},
-                    {"folio_field": "volume", "legacy_field": "Not mapped", "value": "", "description": ""},
-                    {"folio_field": "enumeration", "legacy_field": "Not mapped", "value": "", "description": ""},
-                    {"folio_field": "chronology", "legacy_field": "Not mapped", "value": "", "description": ""},
+                    {"folio_field": "copyNumber", "legacy_field": "COPY_NUMBER", "value": "", "description": "Copy number"},
+                    {"folio_field": "volume", "legacy_field": "Not mapped", "value": "", "description": "Volume"},
+                    {"folio_field": "enumeration", "legacy_field": "Not mapped", "value": "", "description": "Enumeration"},
+                    {"folio_field": "chronology", "legacy_field": "Not mapped", "value": "", "description": "Chronology"},
                     {"folio_field": "yearCaption[0]", "legacy_field": "YEAR", "value": "", "description": "Year caption"},
-                    {"folio_field": "notes[0].note", "legacy_field": "NOTE", "value": "", "description": ""},
-                    {"folio_field": "notes[0].itemNoteTypeId", "legacy_field": "", "value": "", "description": "Note type UUID"},
-                    {"folio_field": "notes[0].staffOnly", "legacy_field": "", "value": False, "description": ""},
+                    {"folio_field": "notes[0].note", "legacy_field": "NOTE", "value": "", "description": "Item note"},
+                    {"folio_field": "notes[0].itemNoteTypeId", "legacy_field": "Not mapped", "value": "", "description": "Note type UUID - auto-filled from FOLIO"},
+                    {"folio_field": "notes[0].staffOnly", "legacy_field": "Not mapped", "value": "false", "description": "Staff only flag"},
                 ]
             },
         )
@@ -377,22 +379,22 @@ class ConfigService:
             "holdingsrecord_mapping.json",
             {
                 "data": [
-                    {"folio_field": "legacyIdentifier", "legacy_field": "HOLDINGS_ID", "value": "", "description": ""},
+                    {"folio_field": "legacyIdentifier", "legacy_field": "HOLDINGS_ID", "value": "", "description": "Legacy holdings ID"},
                     {"folio_field": "formerIds[0]", "legacy_field": "HOLDINGS_ID", "value": "", "description": "Preserve legacy holdings ID"},
-                    {"folio_field": "instanceId", "legacy_field": "BIB_ID", "value": "", "description": ""},
-                    {"folio_field": "permanentLocationId", "legacy_field": "LOCATION", "value": "", "description": ""},
+                    {"folio_field": "instanceId", "legacy_field": "BIB_ID", "value": "", "description": "Link to instance by bib ID"},
+                    {"folio_field": "permanentLocationId", "legacy_field": "LOCATION", "value": "", "description": "Permanent location"},
                     {"folio_field": "temporaryLocationId", "legacy_field": "Not mapped", "value": "", "description": "Temporary location"},
-                    {"folio_field": "callNumber", "legacy_field": "CALL_NUMBER", "value": "", "description": ""},
-                    {"folio_field": "callNumberTypeId", "legacy_field": "Not mapped", "value": "", "description": ""},
-                    {"folio_field": "callNumberPrefix", "legacy_field": "Not mapped", "value": "", "description": ""},
-                    {"folio_field": "callNumberSuffix", "legacy_field": "Not mapped", "value": "", "description": ""},
-                    {"folio_field": "holdingsTypeId", "legacy_field": "Not mapped", "value": "", "description": ""},
-                    {"folio_field": "copyNumber", "legacy_field": "Not mapped", "value": "", "description": ""},
+                    {"folio_field": "callNumber", "legacy_field": "CALL_NUMBER", "value": "", "description": "Call number"},
+                    {"folio_field": "callNumberTypeId", "legacy_field": "Not mapped", "value": "", "description": "Call number type UUID"},
+                    {"folio_field": "callNumberPrefix", "legacy_field": "Not mapped", "value": "", "description": "Call number prefix"},
+                    {"folio_field": "callNumberSuffix", "legacy_field": "Not mapped", "value": "", "description": "Call number suffix"},
+                    {"folio_field": "holdingsTypeId", "legacy_field": "Not mapped", "value": "", "description": "Holdings type UUID"},
+                    {"folio_field": "copyNumber", "legacy_field": "Not mapped", "value": "", "description": "Copy number"},
                     {"folio_field": "discoverySuppress", "legacy_field": "Not mapped", "value": "", "description": "Suppress from discovery"},
-                    {"folio_field": "notes[0].note", "legacy_field": "NOTE", "value": "", "description": ""},
-                    {"folio_field": "notes[0].holdingsNoteTypeId", "legacy_field": "", "value": "", "description": "Note type UUID"},
-                    {"folio_field": "notes[0].staffOnly", "legacy_field": "", "value": True, "description": ""},
-                    {"folio_field": "holdingsStatements[0].statement", "legacy_field": "Not mapped", "value": "", "description": ""},
+                    {"folio_field": "notes[0].note", "legacy_field": "NOTE", "value": "", "description": "Holdings note"},
+                    {"folio_field": "notes[0].holdingsNoteTypeId", "legacy_field": "Not mapped", "value": "", "description": "Note type UUID - auto-filled from FOLIO"},
+                    {"folio_field": "notes[0].staffOnly", "legacy_field": "Not mapped", "value": "false", "description": "Staff only flag"},
+                    {"folio_field": "holdingsStatements[0].statement", "legacy_field": "Not mapped", "value": "", "description": "Holdings statement"},
                 ]
             },
         )
@@ -841,6 +843,117 @@ class ConfigService:
                 "files": [{"file_name": "extradata_transform_feefines.extradata"}],
             },
         ]
+
+
+async def fetch_folio_reference_data(
+        self,
+        folio_url: str,
+        tenant_id: str,
+        username: str,
+        password: str,
+    ) -> dict:
+        """Fetch reference data from FOLIO API and return UUIDs.
+
+        Returns:
+            dict with keys: holdings_note_type_id, item_note_type_id, etc.
+        """
+        result = {
+            "holdings_note_type_id": "",
+            "item_note_type_id": "",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # Authenticate
+                auth_url = f"{folio_url.rstrip('/')}/authn/login"
+                headers = {
+                    "Content-Type": "application/json",
+                    "x-okapi-tenant": tenant_id,
+                }
+                payload = {"username": username, "password": password}
+
+                response = await client.post(auth_url, json=payload, headers=headers)
+
+                if response.status_code not in (200, 201):
+                    return result
+
+                # Get token
+                token = response.headers.get("x-okapi-token")
+                if not token:
+                    body = response.json()
+                    token = body.get("okapiToken") or body.get("accessToken")
+
+                if not token:
+                    return result
+
+                auth_headers = {
+                    "x-okapi-tenant": tenant_id,
+                    "x-okapi-token": token,
+                    "Content-Type": "application/json",
+                }
+
+                # Fetch holdings note types
+                note_types_url = f"{folio_url.rstrip('/')}/holdings-note-types?limit=100"
+                response = await client.get(note_types_url, headers=auth_headers)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    for note_type in data.get("holdingsNoteTypes", []):
+                        if note_type.get("name") == "Note":
+                            result["holdings_note_type_id"] = note_type.get("id", "")
+                            break
+
+                # Fetch item note types
+                item_note_types_url = f"{folio_url.rstrip('/')}/item-note-types?limit=100"
+                response = await client.get(item_note_types_url, headers=auth_headers)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    for note_type in data.get("itemNoteTypes", []):
+                        if note_type.get("name") == "Note":
+                            result["item_note_type_id"] = note_type.get("id", "")
+                            break
+
+        except Exception:
+            pass
+
+        return result
+
+    def update_mapping_with_reference_data(self, reference_data: dict):
+        """Update mapping files with reference data UUIDs from FOLIO.
+
+        Args:
+            reference_data: dict with holdings_note_type_id, item_note_type_id, etc.
+        """
+        # Update holdingsrecord_mapping.json
+        holdings_mapping_path = self.mapping_files_dir / "holdingsrecord_mapping.json"
+        if holdings_mapping_path.exists() and reference_data.get("holdings_note_type_id"):
+            try:
+                mapping = json.loads(holdings_mapping_path.read_text(encoding="utf-8"))
+                for item in mapping.get("data", []):
+                    if item.get("folio_field") == "notes[0].holdingsNoteTypeId":
+                        item["value"] = reference_data["holdings_note_type_id"]
+                        break
+                holdings_mapping_path.write_text(
+                    json.dumps(mapping, indent=4, ensure_ascii=False), encoding="utf-8"
+                )
+            except Exception:
+                pass
+
+        # Update item_mapping.json
+        item_mapping_path = self.mapping_files_dir / "item_mapping.json"
+        if item_mapping_path.exists() and reference_data.get("item_note_type_id"):
+            try:
+                mapping = json.loads(item_mapping_path.read_text(encoding="utf-8"))
+                for item in mapping.get("data", []):
+                    if item.get("folio_field") == "notes[0].itemNoteTypeId":
+                        item["value"] = reference_data["item_note_type_id"]
+                        break
+                item_mapping_path.write_text(
+                    json.dumps(mapping, indent=4, ensure_ascii=False), encoding="utf-8"
+                )
+            except Exception:
+                pass
 
 
 def get_config_service(client_path: Path) -> ConfigService:
