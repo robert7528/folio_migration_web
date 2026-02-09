@@ -678,6 +678,7 @@ class ConfigService:
                 "migrationTaskType": "HoldingsCsvTransformer",
                 "holdingsMapFileName": "holdingsrecord_mapping.json",
                 "locationMapFileName": "locations.tsv",
+                "callNumberTypeMapFileName": "call_number_type_mapping.tsv",
                 "defaultCallNumberTypeName": "Library of Congress classification",
                 "fallbackHoldingsTypeId": "03c9c400-b9e3-4a07-ac0e-05ab470233ed",
                 "hridHandling": "default",
