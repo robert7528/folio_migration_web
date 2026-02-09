@@ -844,8 +844,7 @@ class ConfigService:
             },
         ]
 
-
-async def fetch_folio_reference_data(
+    async def fetch_folio_reference_data(
         self,
         folio_url: str,
         tenant_id: str,
