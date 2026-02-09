@@ -428,7 +428,15 @@ class ExecutionService:
         return None
 
     def _get_stats_from_report(self, base_folder: str, iteration: str, task_name: str) -> Optional[dict]:
-        """Extract statistics from the migration report markdown file."""
+        """Extract statistics from the migration report markdown file.
+
+        folio_migration_tools report format:
+        Measure | Count
+        --- | ---:
+        Holdings Records Written to disk | 65
+        Number of Legacy items in file | 73
+        FAILED Records failed due to an error | 0
+        """
         reports_path = Path(base_folder) / "iterations" / iteration / "reports"
         report_file = reports_path / f"report_{task_name}.md"
 
@@ -439,40 +447,74 @@ class ExecutionService:
             content = report_file.read_text(encoding="utf-8")
             result = {}
 
-            # Parse markdown report for statistics
-            # Look for patterns like "## Records" section with tables
-            # Or summary lines like "Total records: 100"
+            # Parse folio_migration_tools report format
+            # Pattern: "Measure Name | Count" where Measure is in first column
 
-            # Pattern: "| Total | 1234 |" in markdown table
-            match = re.search(r"\|\s*Total\s*\|\s*(\d+)\s*\|", content, re.IGNORECASE)
-            if match:
-                result["total"] = int(match.group(1))
-                result["processed"] = int(match.group(1))
+            # Total/input records patterns
+            total_patterns = [
+                r"Number of (?:Legacy )?(?:items|records) in file\s*\|\s*(\d+)",
+                r"Number of rows in \S+\s*\|\s*(\d+)",
+                r"Total records\s*\|\s*(\d+)",
+                r"Source data file contains (\d+) rows",
+            ]
+            for pattern in total_patterns:
+                match = re.search(pattern, content, re.IGNORECASE)
+                if match:
+                    result["total"] = int(match.group(1))
+                    break
 
-            # Pattern: "| Written | 1234 |"
-            match = re.search(r"\|\s*Written\s*\|\s*(\d+)\s*\|", content, re.IGNORECASE)
-            if match:
-                result["success"] = int(match.group(1))
+            # Success/written records patterns
+            success_patterns = [
+                r"(?:Holdings|Users|Items|Instances) Records Written to disk\s*\|\s*(\d+)",
+                r"Unique (?:Holdings|Items) created from Items\s*\|\s*(\d+)",
+                r"Records matched to Instances\s*\|\s*(\d+)",
+                r"(?:Written|Created|Transformed)\s*\|\s*(\d+)",
+                r"Saving map of (\d+) old and new IDs",
+            ]
+            for pattern in success_patterns:
+                match = re.search(pattern, content, re.IGNORECASE)
+                if match:
+                    result["success"] = int(match.group(1))
+                    break
 
-            # Pattern: "| Failed | 5 |"
-            match = re.search(r"\|\s*Failed\s*\|\s*(\d+)\s*\|", content, re.IGNORECASE)
-            if match:
-                result["errors"] = int(match.group(1))
+            # Error/failed records patterns
+            error_patterns = [
+                r"FAILED Records failed due to an error\s*\|\s*(\d+)",
+                r"Records not matched to Instances\s*\|\s*(\d+)",
+                r"Failed\s*\|\s*(\d+)",
+                r"Errors\s*\|\s*(\d+)",
+            ]
+            for pattern in error_patterns:
+                match = re.search(pattern, content, re.IGNORECASE)
+                if match:
+                    error_count = int(match.group(1))
+                    if error_count > 0:
+                        result["errors"] = error_count
+                    break
 
-            # Alternative: Count lines in result JSON file
+            # Processed records (usually same as success + errors or total)
+            if "success" in result:
+                result["processed"] = result.get("success", 0) + result.get("errors", 0)
+            elif "total" in result:
+                result["processed"] = result["total"]
+
+            # If no stats from report, try counting lines in output JSON file
             if not result:
                 results_path = Path(base_folder) / "iterations" / iteration / "results"
-                result_file = results_path / f"folio_users_{task_name}.json"
-                if result_file.exists():
-                    try:
-                        with open(result_file, "r", encoding="utf-8") as f:
-                            # Count JSON objects (one per line for FOLIO format)
-                            count = sum(1 for line in f if line.strip())
-                        result["total"] = count
-                        result["processed"] = count
-                        result["success"] = count
-                    except Exception:
-                        pass
+                # Try different output file patterns
+                for pattern in [f"folio_*_{task_name}.json", f"folio_{task_name}.json"]:
+                    for result_file in results_path.glob(pattern):
+                        try:
+                            with open(result_file, "r", encoding="utf-8") as f:
+                                count = sum(1 for line in f if line.strip())
+                            result["total"] = count
+                            result["processed"] = count
+                            result["success"] = count
+                            break
+                        except Exception:
+                            pass
+                    if result:
+                        break
 
             return result if result else None
         except Exception:
