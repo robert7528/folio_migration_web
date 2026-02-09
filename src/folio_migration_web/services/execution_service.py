@@ -451,10 +451,16 @@ class ExecutionService:
 
             # Parse folio_migration_tools report format
             # Pattern: "Measure Name | Count" where Measure is in first column
+            # Different task types have different measure names
 
             # Total/input records patterns
+            # BibsTransformer: "Records in file before parsing | 14"
+            # HoldingsCsvTransformer: "Number of Legacy items in file | 73"
+            # BatchPoster: "Records processed first time | 14"
             total_patterns = [
+                r"Records in file before parsing\s*\|\s*(\d+)",
                 r"Number of (?:Legacy )?(?:items|records) in file\s*\|\s*(\d+)",
+                r"Records processed first time\s*\|\s*(\d+)",
                 r"Number of rows in \S+\s*\|\s*(\d+)",
                 r"Total records\s*\|\s*(\d+)",
                 r"Source data file contains (\d+) rows",
@@ -466,11 +472,19 @@ class ExecutionService:
                     break
 
             # Success/written records patterns
+            # BibsTransformer: "Inventory records written to disk | 14"
+            # HoldingsCsvTransformer: "Holdings Records Written to disk | 65"
+            # ItemsTransformer: "Items Records Written to disk | X"
+            # BatchPoster: "Records posted first time | 0"
+            # UserTransformer: "Successful user transformations | 128"
             success_patterns = [
+                r"Inventory records written to disk\s*\|\s*(\d+)",
                 r"(?:Holdings|Users|Items|Instances) Records Written to disk\s*\|\s*(\d+)",
+                r"Records posted first time\s*\|\s*(\d+)",
+                r"Successful (?:user )?transformations?\s*\|\s*(\d+)",
                 r"Unique (?:Holdings|Items) created from Items\s*\|\s*(\d+)",
                 r"Records matched to Instances\s*\|\s*(\d+)",
-                r"(?:Written|Created|Transformed)\s*\|\s*(\d+)",
+                r"Unique ID:s written to legacy map\s*\|\s*(\d+)",
                 r"Saving map of (\d+) old and new IDs",
             ]
             for pattern in success_patterns:
@@ -480,8 +494,13 @@ class ExecutionService:
                     break
 
             # Error/failed records patterns
+            # HoldingsCsvTransformer: "FAILED Records failed due to an error | 0"
+            # BatchPoster: "Failed to post first time | 0"
+            # UserTransformer: "Records failed | 1"
             error_patterns = [
                 r"FAILED Records failed due to an error\s*\|\s*(\d+)",
+                r"Failed to post first time\s*\|\s*(\d+)",
+                r"Records failed\s*\|\s*(\d+)",
                 r"Records not matched to Instances\s*\|\s*(\d+)",
                 r"Failed\s*\|\s*(\d+)",
                 r"Errors\s*\|\s*(\d+)",
@@ -495,6 +514,8 @@ class ExecutionService:
                     break
 
             # Merged/duplicate records patterns (not errors, just merged)
+            # HoldingsCsvTransformer: "Holdings already created from Item | 8"
+            # ItemsTransformer: "Items already created | X"
             merged_patterns = [
                 r"Holdings already created from Item\s*\|\s*(\d+)",
                 r"Items already created\s*\|\s*(\d+)",
