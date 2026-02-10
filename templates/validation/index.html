@@ -270,19 +270,26 @@ async function loadBatchPosterExecutions() {
         });
 
         select.innerHTML = '<option value="">Select a BatchPoster execution...</option>' +
-            batchPosterExecutions.map(exec => `
+            batchPosterExecutions.map(exec => {
+                const total = exec.success_count || exec.total_records || 0;
+                const errors = exec.error_count || 0;
+                const actualSuccess = errors > 0 ? Math.max(total - errors, 0) : total;
+                return `
                 <option value="${exec.id}">
-                    #${exec.id} - ${exec.task_name} (posted: ${exec.success_count || exec.total_records || '?'}) - ${new Date(exec.completed_at).toLocaleString('zh-TW')}
-                </option>
-            `).join('');
+                    #${exec.id} - ${exec.task_name} (success: ${actualSuccess} / total: ${total}) - ${new Date(exec.completed_at).toLocaleString('zh-TW')}
+                </option>`;
+            }).join('');
 
         select.addEventListener('change', () => {
             countBtn.disabled = !select.value;
             const infoDiv = document.getElementById('count-exec-info');
             if (select.value) {
                 const exec = window._batchPosterExecs[select.value];
+                const total = exec.success_count || exec.total_records || 0;
+                const errors = exec.error_count || 0;
+                const actualSuccess = errors > 0 ? Math.max(total - errors, 0) : total;
                 document.getElementById('pre-count-display').textContent = exec.pre_execution_count.toLocaleString();
-                document.getElementById('posted-count-display').textContent = (exec.success_count || exec.total_records || 0).toLocaleString();
+                document.getElementById('posted-count-display').textContent = `${actualSuccess.toLocaleString()} (errors: ${errors})`;
                 infoDiv.style.display = 'block';
             } else {
                 infoDiv.style.display = 'none';
