@@ -323,9 +323,13 @@ async def start_count_validation(
         post_count = await folio_client.get_record_count(record_type)
         completed_at = datetime.now()
 
-        # Calculate
+        # Calculate expected count: actual successful posts = success - errors
+        # Log parser may overcount success (e.g. "Done posting 65 records" logged
+        # even when all fail), so subtract known errors for accuracy.
         pre_count = execution.pre_execution_count
-        expected_count = execution.success_count or execution.total_records or 0
+        total = execution.success_count or execution.total_records or 0
+        errors = execution.error_count or 0
+        expected_count = max(total - errors, 0) if errors > 0 else total
         actual_diff = post_count - pre_count
         match = actual_diff == expected_count
 
