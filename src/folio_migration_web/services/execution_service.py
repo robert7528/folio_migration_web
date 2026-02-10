@@ -529,11 +529,18 @@ class ExecutionService:
                         result["merged"] = merged_count
                     break
 
-            # Processed records (usually same as success + errors or total)
-            if "success" in result:
-                result["processed"] = result.get("success", 0) + result.get("errors", 0)
-            elif "total" in result:
+            # Calculate derived values
+            # For BatchPoster: "Records posted first time" can be 0 even when all succeed
+            # (e.g., when records are updated rather than created)
+            # In this case, success = total - errors
+            if "total" in result:
+                errors = result.get("errors", 0)
+                if "success" not in result or result["success"] == 0:
+                    # If no success count or success is 0, calculate from total - errors
+                    result["success"] = result["total"] - errors
                 result["processed"] = result["total"]
+            elif "success" in result:
+                result["processed"] = result.get("success", 0) + result.get("errors", 0)
 
             # If no stats from report, try counting lines in output JSON file
             if not result:
