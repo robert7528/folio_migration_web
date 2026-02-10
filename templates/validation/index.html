@@ -22,10 +22,55 @@
     </div>
 </div>
 
-<!-- Start Validation -->
+<!-- Count Validation (Quick) -->
 <div class="card mb-2">
     <div class="card-header">
-        <span class="card-title">Start New Validation</span>
+        <span class="card-title">Count Validation (Quick)</span>
+        <span class="badge badge-info">2 API calls</span>
+    </div>
+    <div class="p-2">
+        <div class="alert alert-info mb-2">
+            <strong>How it works:</strong>
+            Compare FOLIO record count before and after BatchPoster execution.
+            Pre-count is automatically captured when BatchPoster starts.
+            Only needs 1 API call to get the current count.
+        </div>
+
+        <div class="form-group">
+            <label for="count-execution-select">Select BatchPoster Execution</label>
+            <select id="count-execution-select" class="form-control">
+                <option value="">Loading BatchPoster executions...</option>
+            </select>
+        </div>
+
+        <div id="count-exec-info" style="display: none;" class="mb-2">
+            <small class="text-muted">
+                Pre-execution count: <strong id="pre-count-display">-</strong> |
+                Posted records: <strong id="posted-count-display">-</strong>
+            </small>
+        </div>
+
+        <button id="count-btn" class="btn btn-primary" onclick="startCountValidation()" disabled>
+            Run Count Validation
+        </button>
+    </div>
+</div>
+
+<!-- Count Validation Result Modal -->
+<div id="count-result-modal" class="card mb-2" style="display: none;">
+    <div class="card-header">
+        <span class="card-title">Count Validation Result</span>
+        <button class="btn btn-sm btn-secondary" onclick="document.getElementById('count-result-modal').style.display='none'">Close</button>
+    </div>
+    <div class="p-2">
+        <div id="count-result-content"></div>
+    </div>
+</div>
+
+<!-- Record-Level Validation -->
+<div class="card mb-2">
+    <div class="card-header">
+        <span class="card-title">Record-Level Validation (Detailed)</span>
     </div>
     <div class="p-2">
         <div class="alert alert-info mb-2">
@@ -67,17 +112,18 @@
             <thead>
                 <tr>
                     <th>Validation ID</th>
+                    <th>Type</th>
                     <th>Execution</th>
                     <th>Record Type</th>
                     <th>Status</th>
-                    <th>Results (Found/NotFound/Mismatch)</th>
+                    <th>Results</th>
                     <th>Created</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="validations-table">
                 <tr>
-                    <td colspan="7" class="text-center text-muted">Loading...</td>
+                    <td colspan="8" class="text-center text-muted">Loading...</td>
                 </tr>
             </tbody>
         </table>
@@ -125,6 +171,7 @@ let pollInterval = null;
 document.addEventListener('DOMContentLoaded', async () => {
     await loadFolioStats();
     await loadExecutions();
+    await loadBatchPosterExecutions();
     await loadValidations();
 });
 
@@ -198,6 +245,125 @@ async function loadExecutions() {
     }
 }
 
+async function loadBatchPosterExecutions() {
+    const select = document.getElementById('count-execution-select');
+    const countBtn = document.getElementById('count-btn');
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/executions?status=completed&limit=50`);
+        const data = await response.json();
+
+        // Filter to BatchPoster executions with pre_execution_count
+        const batchPosterExecutions = data.executions.filter(exec =>
+            exec.task_type === 'BatchPoster' && exec.pre_execution_count !== null
+        );
+
+        if (batchPosterExecutions.length === 0) {
+            select.innerHTML = '<option value="">No BatchPoster executions with pre-count available</option>';
+            return;
+        }
+
+        // Store execution data for display
+        window._batchPosterExecs = {};
+        batchPosterExecutions.forEach(exec => {
+            window._batchPosterExecs[exec.id] = exec;
+        });
+
+        select.innerHTML = '<option value="">Select a BatchPoster execution...</option>' +
+            batchPosterExecutions.map(exec => `
+                <option value="${exec.id}">
+                    #${exec.id} - ${exec.task_name} (posted: ${exec.success_count || exec.total_records || '?'}) - ${new Date(exec.completed_at).toLocaleString('zh-TW')}
+                </option>
+            `).join('');
+
+        select.addEventListener('change', () => {
+            countBtn.disabled = !select.value;
+            const infoDiv = document.getElementById('count-exec-info');
+            if (select.value) {
+                const exec = window._batchPosterExecs[select.value];
+                document.getElementById('pre-count-display').textContent = exec.pre_execution_count.toLocaleString();
+                document.getElementById('posted-count-display').textContent = (exec.success_count || exec.total_records || 0).toLocaleString();
+                infoDiv.style.display = 'block';
+            } else {
+                infoDiv.style.display = 'none';
+            }
+        });
+
+    } catch (error) {
+        select.innerHTML = '<option value="">Error loading executions</option>';
+        console.error('Error loading BatchPoster executions:', error);
+    }
+}
+
+async function startCountValidation() {
+    const executionId = document.getElementById('count-execution-select').value;
+    if (!executionId) {
+        alert('Please select a BatchPoster execution');
+        return;
+    }
+
+    const countBtn = document.getElementById('count-btn');
+    countBtn.disabled = true;
+    countBtn.textContent = 'Validating...';
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/validation/count-check`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ execution_id: parseInt(executionId) }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Count validation failed');
+        }
+
+        const result = await response.json();
+
+        // Show result
+        const modal = document.getElementById('count-result-modal');
+        const content = document.getElementById('count-result-content');
+        const isMatch = result.match;
+
+        content.innerHTML = `
+            <div class="alert alert-${isMatch ? 'success' : 'danger'} mb-2">
+                <strong>${isMatch ? 'PASS' : 'MISMATCH'}</strong> - ${result.message}
+            </div>
+            <div class="grid grid-4">
+                <div class="stat-box">
+                    <span class="stat-value">${result.pre_count.toLocaleString()}</span>
+                    <span class="stat-label">Pre-Count</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value">${result.post_count.toLocaleString()}</span>
+                    <span class="stat-label">Post-Count</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value">${result.actual_diff.toLocaleString()}</span>
+                    <span class="stat-label">Actual Diff</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value ${isMatch ? 'text-success' : 'text-danger'}">${result.expected_count.toLocaleString()}</span>
+                    <span class="stat-label">Expected</span>
+                </div>
+            </div>
+            <p class="text-muted mt-1" style="font-size: 0.85rem;">
+                Record type: ${result.record_type} | Validation ID: <code>${result.validation_id}</code>
+            </p>
+        `;
+        modal.style.display = 'block';
+
+        // Reload validations list
+        await loadValidations();
+
+    } catch (error) {
+        alert('Error: ' + error.message);
+    } finally {
+        countBtn.disabled = false;
+        countBtn.textContent = 'Run Count Validation';
+    }
+}
+
 async function loadValidations() {
     const tbody = document.getElementById('validations-table');
 
@@ -209,43 +375,65 @@ async function loadValidations() {
         const data = await response.json();
 
         if (data.validations.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No validations yet</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No validations yet</td></tr>';
             return;
         }
 
-        tbody.innerHTML = data.validations.map(v => `
-            <tr>
-                <td><code title="${v.id}">${truncate(v.id, 25)}</code></td>
-                <td>#${v.execution_id}</td>
-                <td>${v.record_type || '-'}</td>
-                <td><span class="badge badge-${getStatusClass(v.status)}">${v.status}</span></td>
-                <td>
-                    ${v.status === 'completed' ? `
+        tbody.innerHTML = data.validations.map(v => {
+            const isCountCheck = v.validation_type === 'count_check';
+            const typeBadge = isCountCheck
+                ? '<span class="badge badge-info">Count</span>'
+                : '<span class="badge badge-secondary">Record</span>';
+
+            let resultsHtml = '-';
+            if (v.status === 'completed') {
+                if (isCountCheck) {
+                    const passed = v.total_mismatches === 0;
+                    resultsHtml = passed
+                        ? `<span class="text-success">PASS</span>`
+                        : `<span class="text-danger">MISMATCH</span>`;
+                } else {
+                    resultsHtml = `
                         <span class="text-success">${v.total_found}</span> /
                         <span class="text-danger">${v.total_not_found}</span> /
-                        <span class="text-warning">${v.total_mismatches}</span>
-                    ` : v.status === 'failed' && v.error_message ? `
-                        <span class="text-danger" title="${escapeHtml(v.error_message)}">${truncate(v.error_message, 30)}</span>
-                    ` : '-'}
-                </td>
-                <td>${new Date(v.created_at).toLocaleString('zh-TW')}</td>
-                <td class="flex gap-1">
-                    ${v.status === 'completed' ? `
-                        <a href="${ROOT_PATH}/clients/${clientCode}/validation/${v.id}" class="btn btn-sm btn-primary">View</a>
-                    ` : v.status === 'running' ? `
-                        <button class="btn btn-sm btn-secondary" onclick="pollStatus('${v.id}')">Check</button>
-                    ` : v.status === 'failed' && v.error_message ? `
-                        <button class="btn btn-sm btn-secondary" onclick="alert('${escapeHtml(v.error_message)}')">View Error</button>
-                    ` : ''}
-                    ${v.status !== 'running' ? `
-                        <button class="btn btn-sm btn-danger" onclick="deleteValidation('${v.id}')">Delete</button>
-                    ` : ''}
-                </td>
-            </tr>
-        `).join('');
+                        <span class="text-warning">${v.total_mismatches}</span>`;
+                }
+            } else if (v.status === 'failed' && v.error_message) {
+                resultsHtml = `<span class="text-danger" title="${escapeHtml(v.error_message)}">${truncate(v.error_message, 30)}</span>`;
+            }
+
+            let actionsHtml = '';
+            if (v.status === 'completed') {
+                if (isCountCheck) {
+                    actionsHtml = `<button class="btn btn-sm btn-primary" onclick="showCountDetail('${v.id}')">View</button>`;
+                } else {
+                    actionsHtml = `<a href="${ROOT_PATH}/clients/${clientCode}/validation/${v.id}" class="btn btn-sm btn-primary">View</a>`;
+                }
+            } else if (v.status === 'running') {
+                actionsHtml = `<button class="btn btn-sm btn-secondary" onclick="pollStatus('${v.id}')">Check</button>`;
+            } else if (v.status === 'failed' && v.error_message) {
+                actionsHtml = `<button class="btn btn-sm btn-secondary" onclick="alert('${escapeHtml(v.error_message)}')">View Error</button>`;
+            }
+
+            if (v.status !== 'running') {
+                actionsHtml += ` <button class="btn btn-sm btn-danger" onclick="deleteValidation('${v.id}')">Delete</button>`;
+            }
+
+            return `
+                <tr>
+                    <td><code title="${v.id}">${truncate(v.id, 25)}</code></td>
+                    <td>${typeBadge}</td>
+                    <td>#${v.execution_id}</td>
+                    <td>${v.record_type || '-'}</td>
+                    <td><span class="badge badge-${getStatusClass(v.status)}">${v.status}</span></td>
+                    <td>${resultsHtml}</td>
+                    <td>${new Date(v.created_at).toLocaleString('zh-TW')}</td>
+                    <td class="flex gap-1">${actionsHtml}</td>
+                </tr>`;
+        }).join('');
 
     } catch (error) {
-        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">Error: ${error.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger">Error: ${error.message}</td></tr>`;
     }
 }
 
@@ -353,6 +541,50 @@ async function deleteValidation(validationId) {
 
     } catch (error) {
         alert('Error: ' + error.message);
+    }
+}
+
+async function showCountDetail(validationId) {
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/validation/count-detail/${validationId}`);
+        if (!response.ok) throw new Error('Failed to load count validation detail');
+        const d = await response.json();
+
+        const modal = document.getElementById('count-result-modal');
+        const content = document.getElementById('count-result-content');
+        const isMatch = d.match;
+
+        content.innerHTML = `
+            <div class="alert alert-${isMatch ? 'success' : 'danger'} mb-2">
+                <strong>${isMatch ? 'PASS' : 'MISMATCH'}</strong>
+            </div>
+            <div class="grid grid-4">
+                <div class="stat-box">
+                    <span class="stat-value">${(d.pre_count || 0).toLocaleString()}</span>
+                    <span class="stat-label">Pre-Count</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value">${(d.post_count || 0).toLocaleString()}</span>
+                    <span class="stat-label">Post-Count</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value">${(d.actual_diff || 0).toLocaleString()}</span>
+                    <span class="stat-label">Actual Diff</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-value ${isMatch ? 'text-success' : 'text-danger'}">${(d.expected_count || 0).toLocaleString()}</span>
+                    <span class="stat-label">Expected</span>
+                </div>
+            </div>
+            <p class="text-muted mt-1" style="font-size: 0.85rem;">
+                Record type: ${d.record_type || '-'} |
+                Duration: ${d.duration_seconds ? d.duration_seconds.toFixed(2) + 's' : '-'}
+            </p>
+        `;
+        modal.style.display = 'block';
+
+    } catch (error) {
+        alert('Error loading count validation detail: ' + error.message);
     }
 }
 

@@ -81,6 +81,9 @@ class Execution(Base):
     # Process info
     pid = Column(Integer, nullable=True)  # Process ID for cancellation
 
+    # Pre-execution FOLIO count snapshot (for BatchPoster count validation)
+    pre_execution_count = Column(Integer, nullable=True)
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
@@ -99,6 +102,7 @@ class Validation(Base):
     execution_id = Column(Integer, ForeignKey("executions.id"), nullable=False)
 
     # Validation info
+    validation_type = Column(String(20), default="record")  # record, count_check
     record_type = Column(String(50), nullable=True)  # instances, holdings, items, users
     status = Column(String(20), default="pending")  # pending, running, completed, failed
 

@@ -17,6 +17,7 @@ from ..services.validation_service import (
     FolioApiClient,
     ValidationService,
     ValidationSummary,
+    CountValidationResult,
     RecordType,
 )
 from ..utils.encryption import decrypt_value
@@ -89,6 +90,24 @@ class FolioStatsResponse(BaseModel):
     holdings: int = 0
     items: int = 0
     users: int = 0
+
+
+class StartCountValidationRequest(BaseModel):
+    """Request to start count-based validation for BatchPoster."""
+    execution_id: int
+
+
+class CountValidationResponse(BaseModel):
+    """Count validation result."""
+    validation_id: str
+    status: str
+    record_type: str
+    pre_count: int
+    post_count: int
+    expected_count: int
+    actual_diff: int
+    match: bool
+    message: str
 
 
 # ============================================================
@@ -166,6 +185,7 @@ async def list_validations(
             {
                 "id": v.id,
                 "execution_id": v.execution_id,
+                "validation_type": v.validation_type or "record",
                 "record_type": v.record_type,
                 "status": v.status,
                 "total_found": v.total_found_in_folio,
@@ -242,6 +262,129 @@ async def start_validation(
         "status": "pending",
         "message": "Validation started",
     }
+
+
+@router.post("/count-check")
+async def start_count_validation(
+    client_code: str,
+    request: StartCountValidationRequest,
+    db: Session = Depends(get_db),
+) -> CountValidationResponse:
+    """Run count-based validation for a BatchPoster execution.
+
+    Compares the FOLIO record count difference (post - pre) with the
+    number of records the BatchPoster reported posting. Only 1 API call
+    needed (post-count), since pre-count was captured at execution start.
+    """
+    # Verify client
+    client = db.query(ClientModel).filter(ClientModel.client_code == client_code).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client '{client_code}' not found")
+
+    if not client.credentials_set:
+        raise HTTPException(status_code=400, detail="FOLIO credentials not configured")
+
+    # Verify execution
+    execution = db.query(ExecutionModel).filter(
+        ExecutionModel.id == request.execution_id,
+        ExecutionModel.client_code == client_code,
+    ).first()
+
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+
+    if execution.status != "completed":
+        raise HTTPException(status_code=400, detail="Can only validate completed executions")
+
+    if execution.task_type != "BatchPoster":
+        raise HTTPException(status_code=400, detail="Count validation is only for BatchPoster executions")
+
+    if execution.pre_execution_count is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Pre-execution count not available. This execution was started before count capture was enabled.",
+        )
+
+    # Determine record type
+    from .executions import _get_record_type_from_task_name
+    record_type = _get_record_type_from_task_name(execution.task_name)
+    if not record_type:
+        raise HTTPException(status_code=400, detail=f"Cannot determine record type from task: {execution.task_name}")
+
+    try:
+        # Connect to FOLIO and get current count (1 API call)
+        username = decrypt_value(client.encrypted_username)
+        password = decrypt_value(client.encrypted_password)
+        folio_client = await FolioApiClient.create(
+            client.folio_url, client.tenant_id, username, password,
+        )
+
+        started_at = datetime.now()
+        post_count = await folio_client.get_record_count(record_type)
+        completed_at = datetime.now()
+
+        # Calculate
+        pre_count = execution.pre_execution_count
+        expected_count = execution.success_count or execution.total_records or 0
+        actual_diff = post_count - pre_count
+        match = actual_diff == expected_count
+
+        duration = (completed_at - started_at).total_seconds()
+
+        # Create validation record
+        validation_id = f"{client_code}_{request.execution_id}_count_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        result = CountValidationResult(
+            record_type=record_type.value,
+            pre_count=pre_count,
+            post_count=post_count,
+            expected_count=expected_count,
+            actual_diff=actual_diff,
+            match=match,
+            started_at=started_at,
+            completed_at=completed_at,
+            duration_seconds=duration,
+        )
+
+        validation = ValidationModel(
+            id=validation_id,
+            client_code=client_code,
+            execution_id=request.execution_id,
+            validation_type="count_check",
+            record_type=record_type.value,
+            status="completed",
+            total_local_records=expected_count,
+            total_found_in_folio=actual_diff if match else 0,
+            total_not_found=0 if match else abs(expected_count - actual_diff),
+            total_mismatches=0 if match else 1,
+            total_errors=0,
+            started_at=started_at,
+            completed_at=completed_at,
+            duration_seconds=duration,
+            results_json=json.dumps(result.to_dict(), ensure_ascii=False),
+        )
+        db.add(validation)
+        db.commit()
+
+        # Build message
+        if match:
+            message = f"Count validation passed: FOLIO increased by {actual_diff} {record_type.value} (expected {expected_count})"
+        else:
+            message = f"Count mismatch: FOLIO increased by {actual_diff} {record_type.value}, but expected {expected_count}"
+
+        return CountValidationResponse(
+            validation_id=validation_id,
+            status="completed",
+            record_type=record_type.value,
+            pre_count=pre_count,
+            post_count=post_count,
+            expected_count=expected_count,
+            actual_diff=actual_diff,
+            match=match,
+            message=message,
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Count validation failed: {str(e)}")
 
 
 async def run_validation(
@@ -376,6 +519,38 @@ async def get_validation_status(
     )
 
 
+@router.get("/count-detail/{validation_id}")
+async def get_count_validation_detail(
+    client_code: str,
+    validation_id: str,
+    db: Session = Depends(get_db),
+):
+    """Get count validation detail."""
+    validation = db.query(ValidationModel).filter(
+        ValidationModel.id == validation_id,
+        ValidationModel.client_code == client_code,
+    ).first()
+
+    if not validation:
+        raise HTTPException(status_code=404, detail="Validation not found")
+
+    if (validation.validation_type or "record") != "count_check":
+        raise HTTPException(status_code=400, detail="Not a count validation")
+
+    result = {}
+    if validation.results_json:
+        try:
+            result = json.loads(validation.results_json)
+        except json.JSONDecodeError:
+            pass
+
+    return {
+        "validation_id": validation.id,
+        "status": validation.status,
+        **result,
+    }
+
+
 @router.get("/results/{validation_id}")
 async def get_validation_results(
     client_code: str,
@@ -398,7 +573,12 @@ async def get_validation_results(
     results = []
     if validation.results_json:
         try:
-            results = json.loads(validation.results_json)
+            data = json.loads(validation.results_json)
+            # count_check stores a single dict, not array
+            if isinstance(data, list):
+                results = data
+            else:
+                results = []
         except json.JSONDecodeError:
             pass
 

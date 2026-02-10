@@ -589,6 +589,33 @@ class ValidationService:
         return value
 
 
+@dataclass
+class CountValidationResult:
+    """Result of a count-based validation."""
+    record_type: str
+    pre_count: int
+    post_count: int
+    expected_count: int  # Records that were supposed to be posted
+    actual_diff: int  # post_count - pre_count
+    match: bool  # Whether actual_diff == expected_count
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    duration_seconds: Optional[float] = None
+
+    def to_dict(self) -> Dict:
+        return {
+            "record_type": self.record_type,
+            "pre_count": self.pre_count,
+            "post_count": self.post_count,
+            "expected_count": self.expected_count,
+            "actual_diff": self.actual_diff,
+            "match": self.match,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "duration_seconds": self.duration_seconds,
+        }
+
+
 def get_validation_service(client_path: Path, db: Session) -> ValidationService:
     """Get validation service instance."""
     return ValidationService(client_path, db)

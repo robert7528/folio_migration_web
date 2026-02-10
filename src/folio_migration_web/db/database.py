@@ -52,6 +52,10 @@ def _run_migrations():
     migrations = [
         # Add merged_count column to executions table
         ("executions", "merged_count", "ALTER TABLE executions ADD COLUMN merged_count INTEGER DEFAULT 0"),
+        # Add pre_execution_count for BatchPoster count validation
+        ("executions", "pre_execution_count", "ALTER TABLE executions ADD COLUMN pre_execution_count INTEGER"),
+        # Add validation_type to distinguish record vs count_check validations
+        ("validations", "validation_type", "ALTER TABLE validations ADD COLUMN validation_type VARCHAR(20) DEFAULT 'record'"),
     ]
 
     with engine.connect() as conn:

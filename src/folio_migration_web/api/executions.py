@@ -14,6 +14,7 @@ from ..db.database import get_db
 from ..db.models import Client as ClientModel, Execution as ExecutionModel
 from ..services.project_service import get_project_service, ProjectService
 from ..services.execution_service import get_execution_service, _running_executions
+from ..services.validation_service import FolioApiClient, RecordType
 from ..utils.encryption import decrypt_value
 
 router = APIRouter(prefix="/api/clients/{client_code}/executions", tags=["executions"])
@@ -58,6 +59,7 @@ class ExecutionResponse(BaseModel):
     duration_seconds: Optional[float]
     log_file: Optional[str]
     error_message: Optional[str]
+    pre_execution_count: Optional[int] = None
     created_at: datetime
 
     class Config:
@@ -144,12 +146,42 @@ async def start_execution(
         iteration=request.iteration,
     )
 
+    # For BatchPoster tasks, capture pre-execution FOLIO record count
+    if task["type"] == "BatchPoster" and client.credentials_set:
+        try:
+            username = decrypt_value(client.encrypted_username)
+            folio_client = await FolioApiClient.create(
+                client.folio_url, client.tenant_id, username, password,
+            )
+            # Determine record type from task name
+            record_type = _get_record_type_from_task_name(request.task_name)
+            if record_type:
+                pre_count = await folio_client.get_record_count(record_type)
+                execution.pre_execution_count = pre_count
+                db.commit()
+        except Exception:
+            pass  # Non-critical: count validation will be unavailable
+
     # Start execution
     success = execution_service.start_execution(execution, password)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to start execution")
 
     return execution
+
+
+def _get_record_type_from_task_name(task_name: str) -> Optional[RecordType]:
+    """Determine FOLIO record type from BatchPoster task name."""
+    name_lower = task_name.lower()
+    if "instance" in name_lower or "bib" in name_lower:
+        return RecordType.INSTANCES
+    elif "holding" in name_lower:
+        return RecordType.HOLDINGS
+    elif "item" in name_lower:
+        return RecordType.ITEMS
+    elif "user" in name_lower:
+        return RecordType.USERS
+    return None
 
 
 @router.get("", response_model=ExecutionListResponse)
