@@ -508,6 +508,19 @@ class ValidationService:
         if "legacyIdentifier" in record:
             return record["legacyIdentifier"]
 
+        # Check administrativeNotes for "Identifier(s) from previous system: XXX"
+        # This is where BibsTransformer stores the MARC 001 legacy ID
+        import re
+        for note in record.get("administrativeNotes", []):
+            match = re.search(r"Identifier\(s\) from previous system:\s*(.+)", note)
+            if match:
+                return match.group(1).strip()
+
+        # Check formerIds array
+        former_ids = record.get("formerIds", [])
+        if former_ids:
+            return former_ids[0]
+
         # Check identifiers array for instances
         if record_type == RecordType.INSTANCES:
             for identifier in record.get("identifiers", []):
@@ -616,7 +629,8 @@ class ValidationService:
         fields_map = {
             RecordType.INSTANCES: [
                 "title",
-                "source",
+                # source excluded: local has "FOLIO" but after SRS import
+                # FOLIO changes it to "MARC", so comparison always mismatches
                 # instanceTypeId and modeOfIssuanceId are reference data UUIDs
             ],
             RecordType.HOLDINGS: [
