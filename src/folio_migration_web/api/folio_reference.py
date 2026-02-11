@@ -33,6 +33,11 @@ REFERENCE_TYPES = {
         "records_key": "itemNoteTypes",
         "label": "Item Note Types",
     },
+    "holdings-note-types": {
+        "endpoint": "/holdings-note-types",
+        "records_key": "holdingsNoteTypes",
+        "label": "Holdings Note Types",
+    },
     "address-types": {
         "endpoint": "/addresstypes",
         "records_key": "addressTypes",
