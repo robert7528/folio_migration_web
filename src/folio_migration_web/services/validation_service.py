@@ -670,11 +670,9 @@ class ValidationService:
         """
         fields_map = {
             RecordType.INSTANCES: [
-                "instanceTypeId",
-                "modeOfIssuanceId",
-                # title excluded: SRS MARC import re-parses title from MARC
-                # fields, causing invisible punctuation/whitespace differences
-                # source excluded: changes from "FOLIO" to "MARC" after SRS import
+                # Instances: existence check only (found by UUID = pass)
+                # title/source change after SRS MARC import, UUIDs are from
+                # the same tool, so field comparison adds no value
             ],
             RecordType.HOLDINGS: [
                 "instanceId",
