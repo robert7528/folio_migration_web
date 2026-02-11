@@ -7,8 +7,12 @@ Web application for managing FOLIO library migration projects.
 - Create and manage client migration projects
 - Configure FOLIO credentials with encrypted storage
 - Upload source data files (MARC, CSV, JSON)
-- Edit migration configuration files
-- Test FOLIO connections
+- Edit migration configuration and mapping files (JSON, TSV)
+- FOLIO reference data UUID lookup (locations, material types, loan types, etc.)
+- Execute migration tasks via folio_migration_tools
+- Validate migration results (record-level comparison & count check)
+- Delete migrated records from FOLIO (instances, holdings, items, users)
+- Test FOLIO API connections
 
 ## Requirements
 
@@ -63,7 +67,8 @@ folio_migration_web/
 │   └── utils/            # Utilities
 ├── static/               # CSS, JavaScript
 ├── templates/            # HTML templates
-└── deployment/           # Deployment configs
+├── deployment/           # Deployment configs
+└── docs/                 # Migration documentation
 ```
 
 ## License
