@@ -141,6 +141,24 @@ body {
     color: white;
 }
 
+.btn-info {
+    background-color: #0891b2;
+    color: white;
+}
+
+.btn-info:hover {
+    background-color: #0e7490;
+}
+
+.btn-warning {
+    background-color: #d97706;
+    color: white;
+}
+
+.btn-warning:hover {
+    background-color: #b45309;
+}
+
 .btn-sm {
     padding: 0.25rem 0.5rem;
     font-size: 0.75rem;

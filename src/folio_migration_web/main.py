@@ -51,7 +51,7 @@ templates.env.globals["root_path"] = settings.root_path
 
 
 # Import and include API routers
-from .api import clients, credentials, files, config_editor, health, tasks, executions, validation, deletion  # noqa: E402
+from .api import clients, credentials, files, config_editor, health, tasks, executions, validation, deletion, folio_reference  # noqa: E402
 
 app.include_router(clients.router)
 app.include_router(credentials.router)
@@ -62,6 +62,7 @@ app.include_router(tasks.router)
 app.include_router(executions.router)
 app.include_router(validation.router)
 app.include_router(deletion.router)
+app.include_router(folio_reference.router)
 
 
 # HTML Pages

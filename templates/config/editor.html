@@ -14,6 +14,7 @@
         <button id="btn-format" class="btn btn-secondary" onclick="formatJson()">Format JSON</button>
         <button id="btn-validate" class="btn btn-secondary" onclick="validateConfig()">Validate</button>
         <button class="btn btn-primary" onclick="saveConfig()">Save</button>
+        <button id="btn-lookup" class="btn btn-info" onclick="showUuidLookup()">Lookup UUID</button>
     </div>
 
     <div class="editor-container">
@@ -22,6 +23,44 @@
 </div>
 
 <div id="validation-results" style="display: none;"></div>
+
+<!-- UUID Lookup Modal -->
+<div id="uuid-lookup-modal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 700px;">
+        <div class="modal-header">
+            <h2>FOLIO Reference Data Lookup</h2>
+            <button class="modal-close" onclick="hideUuidLookup()">&times;</button>
+        </div>
+        <div class="form-group">
+            <label for="ref-type-select">Reference Data Type</label>
+            <select id="ref-type-select" onchange="loadReferenceData()">
+                <option value="">-- Select type --</option>
+            </select>
+        </div>
+        <div id="ref-data-loading" style="display: none;" class="text-center p-2">
+            <span class="spinner"></span> Loading from FOLIO...
+        </div>
+        <div id="ref-data-results" style="display: none;">
+            <div class="form-group">
+                <input type="text" id="ref-data-filter" placeholder="Filter by name..." oninput="filterReferenceData()">
+            </div>
+            <div style="max-height: 400px; overflow-y: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>UUID</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="ref-data-table"></tbody>
+                </table>
+            </div>
+            <p class="text-muted mt-1" id="ref-data-count"></p>
+        </div>
+        <div id="ref-data-error" class="alert alert-danger mt-2" style="display: none;"></div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -168,6 +207,141 @@ function showResult(success, message) {
     el.style.display = 'block';
     el.style.whiteSpace = 'pre-wrap';
     el.textContent = message;
+}
+
+// UUID Lookup
+let refDataCache = {};
+let currentRefData = [];
+
+async function showUuidLookup() {
+    const modal = document.getElementById('uuid-lookup-modal');
+    const select = document.getElementById('ref-type-select');
+
+    if (select.options.length <= 1) {
+        try {
+            const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/folio/reference-data/types`);
+            const data = await response.json();
+            data.types.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t.key;
+                opt.textContent = t.label;
+                select.appendChild(opt);
+            });
+        } catch (error) {
+            console.error('Error loading reference types:', error);
+        }
+    }
+
+    modal.style.display = 'flex';
+}
+
+function hideUuidLookup() {
+    document.getElementById('uuid-lookup-modal').style.display = 'none';
+}
+
+document.getElementById('uuid-lookup-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'uuid-lookup-modal') hideUuidLookup();
+});
+
+async function loadReferenceData() {
+    const refType = document.getElementById('ref-type-select').value;
+    if (!refType) return;
+
+    const loadingEl = document.getElementById('ref-data-loading');
+    const resultsEl = document.getElementById('ref-data-results');
+    const errorEl = document.getElementById('ref-data-error');
+
+    loadingEl.style.display = 'block';
+    resultsEl.style.display = 'none';
+    errorEl.style.display = 'none';
+
+    if (refDataCache[refType]) {
+        currentRefData = refDataCache[refType];
+        renderReferenceData(currentRefData);
+        loadingEl.style.display = 'none';
+        return;
+    }
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/folio/reference-data/${refType}`);
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || 'Failed to load reference data');
+        }
+
+        const data = await response.json();
+        currentRefData = data.values;
+        refDataCache[refType] = currentRefData;
+        renderReferenceData(currentRefData);
+    } catch (error) {
+        errorEl.textContent = error.message;
+        errorEl.style.display = 'block';
+    } finally {
+        loadingEl.style.display = 'none';
+    }
+}
+
+function renderReferenceData(items) {
+    const tbody = document.getElementById('ref-data-table');
+    const resultsEl = document.getElementById('ref-data-results');
+    const countEl = document.getElementById('ref-data-count');
+    document.getElementById('ref-data-filter').value = '';
+
+    tbody.innerHTML = items.map(item => `
+        <tr>
+            <td>${item.name}${item.code ? ` <small class="text-muted">(${item.code})</small>` : ''}</td>
+            <td><code style="font-size: 0.85em;">${item.id}</code></td>
+            <td><button class="btn btn-sm btn-primary" onclick="copyUuid('${item.id}', this)">Copy</button></td>
+        </tr>
+    `).join('');
+
+    countEl.textContent = `${items.length} items`;
+    resultsEl.style.display = 'block';
+}
+
+function filterReferenceData() {
+    const filter = document.getElementById('ref-data-filter').value.toLowerCase();
+    const filtered = currentRefData.filter(item =>
+        item.name.toLowerCase().includes(filter) ||
+        item.code.toLowerCase().includes(filter) ||
+        item.id.toLowerCase().includes(filter)
+    );
+    const tbody = document.getElementById('ref-data-table');
+    const countEl = document.getElementById('ref-data-count');
+
+    tbody.innerHTML = filtered.map(item => `
+        <tr>
+            <td>${item.name}${item.code ? ` <small class="text-muted">(${item.code})</small>` : ''}</td>
+            <td><code style="font-size: 0.85em;">${item.id}</code></td>
+            <td><button class="btn btn-sm btn-primary" onclick="copyUuid('${item.id}', this)">Copy</button></td>
+        </tr>
+    `).join('');
+
+    countEl.textContent = `${filtered.length} / ${currentRefData.length} items`;
+}
+
+async function copyUuid(uuid, btn) {
+    try {
+        await navigator.clipboard.writeText(uuid);
+        const original = btn.textContent;
+        btn.textContent = 'Copied!';
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-success');
+        setTimeout(() => {
+            btn.textContent = original;
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-primary');
+        }, 1500);
+    } catch {
+        const input = document.createElement('input');
+        input.value = uuid;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+    }
 }
 
 // Warn before leaving with unsaved changes
