@@ -312,6 +312,9 @@ class ValidationService:
         # Load local records
         local_records = self._load_local_records(output_file, record_type)
 
+        # Load id_map for legacy ID lookup (uuid -> legacy_id)
+        id_map = self._load_id_map(output_file.parent, record_type)
+
         # Apply sample size if specified
         if sample_size and sample_size < len(local_records):
             import random
@@ -326,7 +329,7 @@ class ValidationService:
 
         # Validate each record
         for record in local_records:
-            result = await self._validate_record(record, record_type, folio_client)
+            result = await self._validate_record(record, record_type, folio_client, id_map)
             summary.results.append(result)
 
             # Update counts
@@ -418,6 +421,38 @@ class ValidationService:
 
         return None
 
+    def _load_id_map(self, results_path: Path, record_type: RecordType) -> Dict[str, str]:
+        """Load id_map file and build uuid -> legacy_id reverse lookup.
+
+        folio_migration_tools produces *_id_map.json files with format:
+        ["legacy_id", "folio_uuid"] per line (JSONL).
+        """
+        # Map record type to id_map filename pattern
+        type_to_pattern = {
+            RecordType.INSTANCES: "instances_id_map",
+            RecordType.HOLDINGS: "holdings_id_map",
+            RecordType.ITEMS: "items_id_map",
+            RecordType.USERS: "users_id_map",
+        }
+        pattern = type_to_pattern.get(record_type, "")
+
+        uuid_to_legacy = {}
+        for f in results_path.glob("*.json"):
+            if pattern and pattern in f.name:
+                try:
+                    content = f.read_text(encoding="utf-8")
+                    for line in content.strip().split("\n"):
+                        if line.strip():
+                            pair = json.loads(line)
+                            if isinstance(pair, list) and len(pair) >= 2:
+                                legacy_id, folio_uuid = pair[0], pair[1]
+                                uuid_to_legacy[folio_uuid] = legacy_id
+                except Exception:
+                    continue
+                break
+
+        return uuid_to_legacy
+
     def _load_local_records(self, file_path: Path, record_type: RecordType) -> List[Dict]:
         """Load records from local JSON file."""
         content = file_path.read_text(encoding="utf-8")
@@ -454,12 +489,19 @@ class ValidationService:
         local_record: Dict,
         record_type: RecordType,
         folio_client: FolioApiClient,
+        id_map: Optional[Dict[str, str]] = None,
     ) -> ValidationResult:
         """Validate a single record against FOLIO."""
         # Extract identifiers
-        legacy_id = self._extract_legacy_id(local_record, record_type)
         folio_id = local_record.get("id")
         hrid = local_record.get("hrid")
+
+        # Try id_map first for legacy ID (most reliable)
+        legacy_id = None
+        if id_map and folio_id:
+            legacy_id = id_map.get(folio_id)
+        if not legacy_id:
+            legacy_id = self._extract_legacy_id(local_record, record_type)
 
         result = ValidationResult(
             legacy_id=legacy_id or folio_id or "unknown",
@@ -629,27 +671,31 @@ class ValidationService:
         fields_map = {
             RecordType.INSTANCES: [
                 "title",
+                "instanceTypeId",
+                "modeOfIssuanceId",
                 # source excluded: local has "FOLIO" but after SRS import
-                # FOLIO changes it to "MARC", so comparison always mismatches
-                # instanceTypeId and modeOfIssuanceId are reference data UUIDs
+                # FOLIO changes it to "MARC", always mismatches
             ],
             RecordType.HOLDINGS: [
                 "instanceId",
                 "permanentLocationId",
                 "callNumber",
+                "holdingsTypeId",
             ],
             RecordType.ITEMS: [
                 "holdingsRecordId",
                 "barcode",
-                # materialTypeId and permanentLoanTypeId are reference data UUIDs
+                "materialTypeId",
+                "permanentLoanTypeId",
             ],
             RecordType.USERS: [
                 "username",
                 "barcode",
                 "active",
-                # patronGroup excluded: local has legacy code, FOLIO has UUID
+                "externalSystemId",
                 "personal.lastName",
                 "personal.firstName",
+                # patronGroup excluded: local has legacy code, FOLIO has UUID
             ],
         }
         return fields_map.get(record_type, [])
