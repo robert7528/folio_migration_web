@@ -670,11 +670,11 @@ class ValidationService:
         """
         fields_map = {
             RecordType.INSTANCES: [
-                "title",
                 "instanceTypeId",
                 "modeOfIssuanceId",
-                # source excluded: local has "FOLIO" but after SRS import
-                # FOLIO changes it to "MARC", always mismatches
+                # title excluded: SRS MARC import re-parses title from MARC
+                # fields, causing invisible punctuation/whitespace differences
+                # source excluded: changes from "FOLIO" to "MARC" after SRS import
             ],
             RecordType.HOLDINGS: [
                 "instanceId",
