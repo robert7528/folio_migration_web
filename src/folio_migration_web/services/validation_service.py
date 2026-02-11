@@ -235,6 +235,42 @@ class FolioApiClient:
                 return response.json()
             return None
 
+    async def get_holding_by_id(self, holding_id: str) -> Optional[Dict]:
+        """Get holding by UUID."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            url = f"{self.folio_url}/holdings-storage/holdings/{holding_id}"
+            response = await client.get(url, headers=self.headers)
+            if response.status_code == 200:
+                return response.json()
+            return None
+
+    async def get_item_by_id(self, item_id: str) -> Optional[Dict]:
+        """Get item by UUID."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            url = f"{self.folio_url}/item-storage/items/{item_id}"
+            response = await client.get(url, headers=self.headers)
+            if response.status_code == 200:
+                return response.json()
+            return None
+
+    async def get_holding_by_hrid(self, hrid: str) -> Optional[Dict]:
+        """Get holding by HRID."""
+        result = await self.query_holdings(f'hrid=="{hrid}"', limit=1)
+        records = result.get("records", [])
+        return records[0] if records else None
+
+    async def get_item_by_hrid(self, hrid: str) -> Optional[Dict]:
+        """Get item by HRID."""
+        result = await self.query_items(f'hrid=="{hrid}"', limit=1)
+        records = result.get("records", [])
+        return records[0] if records else None
+
+    async def get_item_by_barcode(self, barcode: str) -> Optional[Dict]:
+        """Get item by barcode."""
+        result = await self.query_items(f'barcode=="{barcode}"', limit=1)
+        records = result.get("records", [])
+        return records[0] if records else None
+
     async def get_user_by_external_id(self, external_id: str) -> Optional[Dict]:
         """Get user by external system ID."""
         result = await self.query_users(f'externalSystemId=="{external_id}"', limit=1)
@@ -313,10 +349,13 @@ class ValidationService:
         """Map task type to record type."""
         mapping = {
             "BibsTransformer": RecordType.INSTANCES,
-            "HoldingsTransformer": RecordType.HOLDINGS,
-            "ItemsTransformer": RecordType.ITEMS,
-            "UserTransformer": RecordType.USERS,
             "BibsAndItemsTransformer": RecordType.INSTANCES,
+            "HoldingsTransformer": RecordType.HOLDINGS,
+            "HoldingsCsvTransformer": RecordType.HOLDINGS,
+            "HoldingsHridMerger": RecordType.HOLDINGS,
+            "ItemsTransformer": RecordType.ITEMS,
+            "ItemsCsvTransformer": RecordType.ITEMS,
+            "UserTransformer": RecordType.USERS,
         }
 
         # Direct mapping
@@ -488,18 +527,42 @@ class ValidationService:
         folio_client: FolioApiClient,
     ) -> Optional[Dict]:
         """Fetch corresponding record from FOLIO."""
-        # Try by UUID first
         record_id = local_record.get("id")
-        if record_id:
-            if record_type == RecordType.INSTANCES:
-                return await folio_client.get_instance_by_id(record_id)
-
-        # Try by HRID
         hrid = local_record.get("hrid")
-        if hrid and record_type == RecordType.INSTANCES:
-            return await folio_client.get_instance_by_hrid(hrid)
 
-        # Try by external ID for users
+        # Try by UUID first
+        if record_id:
+            fetch_by_id = {
+                RecordType.INSTANCES: folio_client.get_instance_by_id,
+                RecordType.HOLDINGS: folio_client.get_holding_by_id,
+                RecordType.ITEMS: folio_client.get_item_by_id,
+            }
+            fetcher = fetch_by_id.get(record_type)
+            if fetcher:
+                result = await fetcher(record_id)
+                if result:
+                    return result
+
+        # Try by HRID for instances/holdings/items
+        if hrid and record_type in (RecordType.INSTANCES, RecordType.HOLDINGS, RecordType.ITEMS):
+            fetch_by_hrid = {
+                RecordType.INSTANCES: folio_client.get_instance_by_hrid,
+                RecordType.HOLDINGS: folio_client.get_holding_by_hrid,
+                RecordType.ITEMS: folio_client.get_item_by_hrid,
+            }
+            fetcher = fetch_by_hrid.get(record_type)
+            if fetcher:
+                result = await fetcher(hrid)
+                if result:
+                    return result
+
+        # Try by barcode for items
+        if record_type == RecordType.ITEMS:
+            barcode = local_record.get("barcode")
+            if barcode:
+                return await folio_client.get_item_by_barcode(barcode)
+
+        # Try by external ID / barcode for users
         if record_type == RecordType.USERS:
             external_id = local_record.get("externalSystemId")
             if external_id:
