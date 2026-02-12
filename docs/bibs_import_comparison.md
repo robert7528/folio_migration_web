@@ -311,7 +311,7 @@ folio-marc-data-import \
   --gateway-url https://folio-dev.example.com \
   --tenant-id diku \
   --username admin \
-  --password password \
+  --password <your_password> \
   --marc-file-paths bibs.mrc \
   --import-profile-name "Default MARC-to-Instance" \
   --batch-size 50 \

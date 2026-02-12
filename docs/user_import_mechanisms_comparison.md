@@ -322,7 +322,7 @@ python -m folio_data_import.UserImport \
   --gateway-url "https://api.folio.example.com" \
   --tenant-id "fs00001280" \
   --username "admin" \
-  --password "secret" \
+  --password "<your_password>" \
   --library-name "thu" \
   --user-file-paths "/path/to/folio_users.json" \
   --batch-size 250 \
@@ -352,7 +352,7 @@ python -m folio_data_import.UserImport \
 export FOLIO_GATEWAY_URL="https://api.folio.example.com"
 export FOLIO_TENANT_ID="fs00001280"
 export FOLIO_USERNAME="admin"
-export FOLIO_PASSWORD="secret"
+export FOLIO_PASSWORD="<your_password>"
 export FOLIO_LIBRARY_NAME="thu"
 export FOLIO_FIELDS_TO_PROTECT="personal.email,barcode"
 export FOLIO_LIMIT_ASYNC_REQUESTS=10
