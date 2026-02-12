@@ -11,17 +11,21 @@ BibsTransformer 是 FOLIO Migration Tools 中用於將 MARC 書目記錄轉換�
 ### 基本命令格式
 
 ```bash
-python -m folio_migration_tools <config_path> <task_name> --base_folder_path <path> --folio_password <password>
+# 密碼透過環境變數傳遞，避免在 ps 輸出中暴露
+export FOLIO_MIGRATION_TOOLS_FOLIO_PASSWORD="your_password"
+
+python -m folio_migration_tools <config_path> <task_name> --base_folder_path <path>
 ```
 
 ### 實際範例
 
 ```bash
+export FOLIO_MIGRATION_TOOLS_FOLIO_PASSWORD="your_password"
+
 python -m folio_migration_tools \
     /path/to/client/mapping_files/migration_config.json \
     transform_bibs \
-    --base_folder_path /path/to/client \
-    --folio_password "your_password"
+    --base_folder_path /path/to/client
 ```
 
 ### Web Portal 執行方式
@@ -40,8 +44,16 @@ cmd = [
     str(config_path),
     task_name,
     "--base_folder_path", base_folder,
-    "--folio_password", folio_password,
 ]
+
+# 密碼透過環境變數傳遞（見 execution_service.py）
+process = subprocess.Popen(
+    cmd,
+    env={
+        **os.environ,
+        "FOLIO_MIGRATION_TOOLS_FOLIO_PASSWORD": folio_password,
+    },
+)
 ```
 
 ---
@@ -84,6 +96,11 @@ cmd = [
 | `files` | array | 要處理的 MARC 檔案列表 |
 | `hridHandling` | string | HRID 處理模式 |
 | `deactivateLegacyMarcMappingForBibs` | boolean | 是否停用舊版 MARC 對應 |
+| `addAdministrativeNotesWithLegacyIds` | boolean | 是否在 Instance 中加入含 Legacy ID 的管理備註 |
+| `updateHridSettings` | boolean | 是否更新 FOLIO HRID 計數器（預設 `true`） |
+| `resetHridSettings` | boolean | 是否重置 HRID 計數器至起始值（預設 `false`） |
+| `createSourceRecords` | boolean | 是否產生 SRS 記錄（預設 `false`，與 `dataImportMarc` 互斥） |
+| `dataImportMarc` | boolean | 是否產生 MARC 檔供 Data Import 匯入（預設 `true`，與 `createSourceRecords` 互斥） |
 
 ---
 
@@ -124,10 +141,25 @@ HRID（Human Readable ID）是 FOLIO Instance 的可讀識別碼。
 | `default` | FOLIO 自動產生 HRID（推薦） |
 | `preserve001` | 保留 MARC 001 欄位作為 HRID |
 
+### updateHridSettings 與 resetHridSettings
+
+| 參數 | 預設值 | 說明 |
+|------|--------|------|
+| `updateHridSettings` | `true` | 執行後自動更新 FOLIO HRID 計數器，使後續產生的 HRID 不會與遷移資料衝突 |
+| `resetHridSettings` | `false` | 執行前先將 HRID 計數器重置至起始值 |
+
+### 測試 vs 正式遷移建議
+
+| 階段 | updateHridSettings | resetHridSettings | 說明 |
+|------|-------------------|-------------------|------|
+| 測試階段 | `false` | `false` | 避免影響 FOLIO 計數器，方便反覆測試 |
+| 正式遷移 | `true`（預設） | 視需求 | 確保計數器正確遞增，避免後續 HRID 衝突 |
+
 ### 注意事項
 
 - **`default`**：最安全的選項，避免 HRID 衝突
 - **`preserve001`**：需確保 001 欄位值唯一且符合 FOLIO HRID 格式要求
+- **HRID 計數器衝突風險**：若測試時 `updateHridSettings: true`，每次執行都會推高計數器。正式遷移前若需重置，可設定 `resetHridSettings: true` 或透過 FOLIO 管理介面手動調整
 
 ---
 
@@ -247,10 +279,12 @@ source_data/
 ```
 {client_path}/iterations/{iteration}/
 ├── results/
-│   └── folio_instances_{task_name}.json    # FOLIO Instance 記錄
+│   ├── folio_instances_{task_name}.json              # FOLIO Instance 記錄
+│   ├── folio_marc_instances_{task_name}.mrc          # MARC 輸出（dataImportMarc: true 時產生）
+│   └── instances_id_map.json                         # Legacy ID ↔ FOLIO UUID 對應表
 │
 └── reports/
-    └── report_{task_name}.md               # 轉換報告
+    └── report_{task_name}.md                         # 轉換報告
 ```
 
 ### 7.2 Instance JSON 格式
@@ -338,9 +372,62 @@ source_data/
 
 ---
 
-## 9. Web Portal 執行流程
+## 9. 已知問題與限制
 
-### 9.1 透過介面執行
+> 詳細的問題分析與原始碼追蹤，請參閱 [folio_migration_tools_issues.md](folio_migration_tools_issues.md)。
+
+### 9.1 `createSourceRecords` 與 `dataImportMarc` 互斥
+
+`createSourceRecords` 只有在 `dataImportMarc: false` 時才會實際生效。這是因為 `rules_mapper_base.py` 中的邏輯要求兩個條件同時滿足：
+
+```python
+self.create_source_records = (
+    self.task_configuration.create_source_records
+    and not self.task_configuration.data_import_marc
+)
+```
+
+由於 `dataImportMarc` 預設為 `true`，僅設定 `createSourceRecords: true` 而不明確設定 `dataImportMarc: false` 時，SRS JSON 檔案不會被產生。
+
+### 9.2 `dataImportMarc: false` 時 Subject Source 錯誤
+
+當設定 `dataImportMarc: false` 時，執行可能在第一筆記錄即失敗，錯誤訊息如：
+
+```
+CRITICAL Subject source not found for  =650  \0$aComputer science.
+```
+
+即使 FOLIO 租戶中已正確配置 Subject Sources 和 Mapping Rules，工具仍無法正確解析。此問題可能與 mapping rule 的 indicator 比對邏輯有關。
+
+### 9.3 BatchPoster 不支援 `objectType: "SRS"`
+
+folio_migration_tools 1.10.2 的 BatchPoster 已從支援的 `objectType` 清單中移除 `SRS`。即使成功產生 SRS JSON 檔案，也無法透過 BatchPoster 匯入 FOLIO。
+
+### 9.4 目前 Workaround
+
+使用預設的 `dataImportMarc: true`（或不設定此參數），透過以下兩步驟完成遷移：
+
+1. **BatchPoster 匯入 Instances**：使用 `folio_instances_{task_name}.json`
+2. **FOLIO Data Import UI 匯入 MARC/SRS**：手動上傳 `folio_marc_instances_{task_name}.mrc`
+
+```json
+{
+  "name": "transform_bibs",
+  "migrationTaskType": "BibsTransformer",
+  "dataImportMarc": true,
+  "ilsFlavour": "tag001",
+  "hridHandling": "default",
+  "updateHridSettings": false
+}
+```
+
+> **注意**：此方式無法完全自動化，SRS 部分需手動操作。
+
+---
+
+## 10. Web Portal 執行流程
+
+### 10.1 透過介面執行
 
 1. 進入客戶專案詳情頁
 2. 點擊「Execute Tasks」按鈕
@@ -349,13 +436,13 @@ source_data/
 5. 確認使用儲存的 Credentials
 6. 點擊「Start Execution」
 
-### 9.2 即時監控
+### 10.2 即時監控
 
 - 即時顯示執行日誌
 - 進度條顯示處理進度
 - 可隨時取消執行
 
-### 9.3 查看結果
+### 10.3 查看結果
 
 執行完成後：
 1. 進入 Execution History 查看歷史記錄
@@ -364,15 +451,15 @@ source_data/
 
 ---
 
-## 10. 最佳實踐
+## 11. 最佳實踐
 
-### 10.1 測試建議
+### 11.1 測試建議
 
 1. **小量測試先行**：先用少量記錄（如 10-100 筆）測試
 2. **檢查輸出品質**：確認轉換後的 Instance 記錄格式正確
 3. **驗證 Legacy ID**：確保 Legacy ID 正確提取，後續 Holdings/Items 關聯需要
 
-### 10.2 配置建議
+### 11.2 配置建議
 
 ```json
 {
@@ -383,7 +470,7 @@ source_data/
 }
 ```
 
-### 10.3 大量資料處理
+### 11.3 大量資料處理
 
 - 分批處理：將大型 MARC 檔案分成多個小檔案
 - 監控資源：注意記憶體使用
