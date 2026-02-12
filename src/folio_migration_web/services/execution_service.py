@@ -201,10 +201,10 @@ class ExecutionService:
                 str(config_path),
                 task_name,
                 "--base_folder_path", base_folder,
-                "--folio_password", folio_password,
             ]
 
-            # Start process
+            # Start process - pass password via environment variable
+            # instead of command-line argument to avoid exposure in ps output
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -212,7 +212,11 @@ class ExecutionService:
                 text=True,
                 bufsize=1,
                 cwd=base_folder,
-                env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                env={
+                    **os.environ,
+                    "PYTHONUNBUFFERED": "1",
+                    "FOLIO_MIGRATION_TOOLS_FOLIO_PASSWORD": folio_password,
+                },
             )
 
             if state:
