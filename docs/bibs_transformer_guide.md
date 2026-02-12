@@ -478,6 +478,12 @@ folio_migration_tools 1.10.2 的 BatchPoster 已從支援的 `objectType` 清單
 
 ---
 
+## 下一步：匯入 FOLIO
+
+BibsTransformer 完成後，需使用 BatchPoster 將產出的 Instance 記錄匯入 FOLIO。請參閱 [batch_poster_guide.md](batch_poster_guide.md)。
+
+---
+
 ## 附錄：相關檔案位置
 
 | 檔案 | 位置 | 說明 |
