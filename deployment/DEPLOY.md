@@ -125,6 +125,16 @@ sudo systemctl restart folio-migration-web
 └── src/                    # 程式原始碼
 ```
 
+## 手動啟動（除錯用）
+
+不透過 systemd，直接在前景啟動服務，方便查看即時輸出：
+
+```bash
+bash /folio/folio_migration_web/deployment/start.sh
+```
+
+按 `Ctrl+C` 停止。
+
 ## 疑難排解
 
 ### 服務無法啟動
