@@ -10,9 +10,13 @@
 
 ## Installation Steps
 
-### 1. 安裝 uv（如果還沒安裝）
+### 1. 安裝 Git 及 uv（如果還沒安裝）
 
 ```bash
+# 安裝 Git
+sudo dnf install git -y
+
+# 安裝 uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source ~/.bashrc
 ```
