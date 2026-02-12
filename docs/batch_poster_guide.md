@@ -420,7 +420,34 @@ folio_migration_tools 1.10.2 已從 BatchPoster 移除 `objectType: "SRS"` 的�
 
 > 詳見 [folio_migration_tools_issues.md](folio_migration_tools_issues.md) 問題三。
 
-### 9.2 Holdings/Items/Instances 不回報 created/updated 數量
+### 9.2 User 刪除後重新匯入失敗：Request Preference Already Exists
+
+**現象**：已匯入的 User 經批次刪除後重新匯入，BatchPoster 回報錯誤：
+
+```
+Request preference for specified user already exists
+```
+
+**原因**：FOLIO 刪除 User 時**不會**自動刪除該 User 的 Request Preference 記錄。殘留的 Request Preference 中仍引用原 User UUID，當以相同 UUID 重新匯入 User 時，FOLIO 嘗試再次建立 Request Preference 便會衝突。
+
+**解決方案**：
+
+1. **使用 Web Portal 的清理功能**：在重新匯入前，透過 Web Portal 的 Deletion 頁面執行「Clean Up Request Preferences」，清除殘留的 Request Preference
+
+   ```
+   POST /api/clients/{client_code}/deletion/cleanup-request-preferences
+   Body: { "execution_id": <原匯入 User 的 execution_id> }
+   ```
+
+2. **正確的操作順序**：
+   1. 批次刪除 User（Web Portal Deletion 功能會先刪除 Request Preference 再刪除 User）
+   2. 確認刪除完成且無失敗記錄
+   3. 若仍有殘留，執行 cleanup-request-preferences
+   4. 重新執行 BatchPoster 匯入 User
+
+> **預防措施**：使用 Web Portal 的批次刪除功能（而非直接透過 FOLIO API 刪除 User），因為 `deletion_service.py` 會在刪除 User 前先自動刪除其 Request Preference。
+
+### 9.3 Holdings/Items/Instances 不回報 created/updated 數量
 
 BatchPoster 對 Users 物件會回報 `created` 和 `updated` 的數量，但對 Holdings、Items、Instances 僅回報成功/失敗數，無法區分新建或更新。
 
