@@ -428,24 +428,55 @@ folio_migration_tools 1.10.2 已從 BatchPoster 移除 `objectType: "SRS"` 的�
 Request preference for specified user already exists
 ```
 
-**原因**：FOLIO 刪除 User 時**不會**自動刪除該 User 的 Request Preference 記錄。殘留的 Request Preference 中仍引用原 User UUID，當以相同 UUID 重新匯入 User 時，FOLIO 嘗試再次建立 Request Preference 便會衝突。
+**原因**：FOLIO 刪除 User 時**不會**自動刪除該 User 的 Request Preference 記錄。殘留的 Request Preference 中仍引用原 User UUID，當以相同 UUID 重新匯入 User 時，FOLIO 嘗試再次建立 Request Preference 便會衝突。即使手動透過 API 刪除 Request Preference，以相同 UUID 重新匯入仍可能失敗。
 
-**解決方案**：
+**已知的處理方式**：
 
-1. **使用 Web Portal 的清理功能**：在重新匯入前，透過 Web Portal 的 Deletion 頁面執行「Clean Up Request Preferences」，清除殘留的 Request Preference
+#### 方式一：Web Portal 清理 Request Preferences
 
-   ```
-   POST /api/clients/{client_code}/deletion/cleanup-request-preferences
-   Body: { "execution_id": <原匯入 User 的 execution_id> }
-   ```
+在重新匯入前，透過 Web Portal 的 Deletion 頁面執行「Clean Up Request Preferences」：
 
-2. **正確的操作順序**：
-   1. 批次刪除 User（Web Portal Deletion 功能會先刪除 Request Preference 再刪除 User）
-   2. 確認刪除完成且無失敗記錄
-   3. 若仍有殘留，執行 cleanup-request-preferences
-   4. 重新執行 BatchPoster 匯入 User
+```
+POST /api/clients/{client_code}/deletion/cleanup-request-preferences
+Body: { "execution_id": <原匯入 User 的 execution_id> }
+```
 
-> **預防措施**：使用 Web Portal 的批次刪除功能（而非直接透過 FOLIO API 刪除 User），因為 `deletion_service.py` 會在刪除 User 前先自動刪除其 Request Preference。
+> **注意**：此方式僅清除 Request Preference，若 UUID 衝突仍存在，可能仍需搭配方式二。
+
+#### 方式二：UserTransformer 設定 removeIdAndRequestPreferences
+
+在 `migration_config.json` 的 UserTransformer 任務中加入：
+
+```json
+{
+  "name": "transform_users",
+  "migrationTaskType": "UserTransformer",
+  "removeIdAndRequestPreferences": true,
+  ...
+}
+```
+
+相關參數：
+
+| 參數 | 預設值 | 說明 |
+|------|--------|------|
+| `removeIdAndRequestPreferences` | `false` | 同時移除產出 JSON 中的 User ID 和 Request Preference |
+| `removeRequestPreferences` | `false` | 僅移除 Request Preference（保留 ID） |
+
+設定 `removeIdAndRequestPreferences: true` 後，UserTransformer 產出的 JSON 不會包含固定 UUID 和 Request Preference，匯入時 FOLIO 會自行產生新的 User UUID，避免 UUID 和 Request Preference 的衝突。
+
+> **副作用**：每次匯入都會產生新 UUID 的 User，而非更新原有記錄。如果其他記錄（如 Loans）已關聯舊的 User UUID，需注意影響。
+
+#### 建議的操作順序
+
+1. 批次刪除 User（Web Portal 會先刪除 Request Preference 再刪除 User）
+2. 確認刪除完成且無失敗記錄
+3. 若需要，執行 cleanup-request-preferences 清除殘留
+4. 在 UserTransformer 設定 `removeIdAndRequestPreferences: true`
+5. 重新執行 UserTransformer 產生新的 JSON
+6. 重新執行 BatchPoster 匯入 User
+
+> **狀態**：此問題的完整解決方案仍在測試中。
 
 ### 9.3 Holdings/Items/Instances 不回報 created/updated 數量
 
