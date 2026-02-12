@@ -216,6 +216,9 @@ class ExecutionService:
                     **os.environ,
                     "PYTHONUNBUFFERED": "1",
                     "FOLIO_MIGRATION_TOOLS_FOLIO_PASSWORD": folio_password,
+                    # Also set OKAPI_PASSWORD to suppress interactive prompt
+                    # (folio_migration_tools checks this env var for prompt suppression)
+                    "FOLIO_MIGRATION_TOOLS_OKAPI_PASSWORD": folio_password,
                 },
             )
 
