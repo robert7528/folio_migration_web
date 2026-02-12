@@ -442,9 +442,9 @@ Failed to create new user with externalSystemId: d10055001@thu.edu.tw
 | 全新 user，帶新 `id` | 成功 |
 | 已刪除 user 的舊 `id` | **失敗** — 即使 Request Preference 已清除 |
 
-#### 問題二：`/user-import` 先建 Request Preference 再建 User，失敗不回滾
+#### 連帶問題：`/user-import` 產生孤兒 Request Preference
 
-**現象**：匯入帶有 `requestPreference` 的 User JSON 時，全部報錯：
+**現象**：匯入帶有 `requestPreference` 的 User JSON 時，報錯：
 
 ```
 Request preference for specified user already exists
@@ -454,11 +454,11 @@ Request preference for specified user already exists
 
 **原因**：FOLIO `/user-import` 端點的處理順序：
 
-1. 先為所有 User 建立 Request Preference（成功）
+1. 先為所有 User 建立 Request Preference（成功，因為 RP 不檢查 UUID 是否被刪除過）
 2. 再逐筆建立 User（因 UUID 衝突失敗）
 3. **Request Preference 不會回滾**，變成孤兒資料
 
-這會形成惡性循環 — 下次匯入時 Request Preference 已存在，又產生新的錯誤。
+> **重要**：即使手動清除所有孤兒 Request Preference，User 匯入仍會失敗，因為根本原因是 UUID 無法重用（問題一）。孤兒 RP 是 UUID 衝突的**連帶結果**，不是失敗的原因。
 
 #### 影響範圍
 
