@@ -420,32 +420,56 @@ folio_migration_tools 1.10.2 已從 BatchPoster 移除 `objectType: "SRS"` 的�
 
 > 詳見 [folio_migration_tools_issues.md](folio_migration_tools_issues.md) 問題三。
 
-### 9.2 User 刪除後重新匯入失敗：Request Preference Already Exists
+### 9.2 User 刪除後重新匯入失敗
 
-**現象**：已匯入的 User 經批次刪除後重新匯入，BatchPoster 回報錯誤：
+在測試迭代中，已匯入的 User 經批次刪除後重新匯入會失敗。此問題涉及 FOLIO `/user-import` 端點的兩個行為。
+
+#### 問題一：FOLIO 無法重用已刪除 User 的 UUID
+
+**現象**：匯入帶有 `id` 欄位的 User JSON 時，全部失敗：
+
+```
+Failed to create new user with externalSystemId: d10055001@thu.edu.tw
+```
+
+**原因**：FOLIO 刪除 User 後，該 UUID 在系統中仍被保留（audit log、事件記錄等）。`/user-import` 端點無法以相同 UUID 重新建立 User。
+
+**驗證結果**：
+
+| 測試 | 結果 |
+|------|------|
+| 全新 user，不帶 `id` | 成功 |
+| 全新 user，帶新 `id` | 成功 |
+| 已刪除 user 的舊 `id` | **失敗** — 即使 Request Preference 已清除 |
+
+#### 問題二：`/user-import` 先建 Request Preference 再建 User，失敗不回滾
+
+**現象**：匯入帶有 `requestPreference` 的 User JSON 時，全部報錯：
 
 ```
 Request preference for specified user already exists
 ```
 
-**原因**：FOLIO 刪除 User 時**不會**自動刪除該 User 的 Request Preference 記錄。殘留的 Request Preference 中仍引用原 User UUID，當以相同 UUID 重新匯入 User 時，FOLIO 嘗試再次建立 Request Preference 便會衝突。即使手動透過 API 刪除 Request Preference，以相同 UUID 重新匯入仍可能失敗。
+但實際上 User 沒有被建立，Request Preference 卻被建立了。
 
-**已知的處理方式**：
+**原因**：FOLIO `/user-import` 端點的處理順序：
 
-#### 方式一：Web Portal 清理 Request Preferences
+1. 先為所有 User 建立 Request Preference（成功）
+2. 再逐筆建立 User（因 UUID 衝突失敗）
+3. **Request Preference 不會回滾**，變成孤兒資料
 
-在重新匯入前，透過 Web Portal 的 Deletion 頁面執行「Clean Up Request Preferences」：
+這會形成惡性循環 — 下次匯入時 Request Preference 已存在，又產生新的錯誤。
 
-```
-POST /api/clients/{client_code}/deletion/cleanup-request-preferences
-Body: { "execution_id": <原匯入 User 的 execution_id> }
-```
+#### 影響範圍
 
-> **注意**：此方式僅清除 Request Preference，若 UUID 衝突仍存在，可能仍需搭配方式二。
+| 場景 | 影響 |
+|------|------|
+| **正式遷移（首次匯入）** | **無影響** — 沒有舊 UUID，不會衝突 |
+| **測試迭代（刪除 → 重新匯入）** | **必須處理** — 舊 UUID 無法重用 |
 
-#### 方式二：UserTransformer 設定 removeIdAndRequestPreferences
+#### 解決方案：`removeIdAndRequestPreferences: true`
 
-在 `migration_config.json` 的 UserTransformer 任務中加入：
+在 `migration_config.json` 的 UserTransformer 任務中設定：
 
 ```json
 {
@@ -456,27 +480,38 @@ Body: { "execution_id": <原匯入 User 的 execution_id> }
 }
 ```
 
-相關參數：
+此設定會移除產出 JSON 中的 `id` 和 `requestPreference` 欄位，匯入時 FOLIO 自行產生新 UUID，避免所有衝突。
+
+**相關參數**：
 
 | 參數 | 預設值 | 說明 |
 |------|--------|------|
-| `removeIdAndRequestPreferences` | `false` | 同時移除產出 JSON 中的 User ID 和 Request Preference |
+| `removeIdAndRequestPreferences` | `false` | 同時移除 User ID 和 Request Preference |
 | `removeRequestPreferences` | `false` | 僅移除 Request Preference（保留 ID） |
 
-設定 `removeIdAndRequestPreferences: true` 後，UserTransformer 產出的 JSON 不會包含固定 UUID 和 Request Preference，匯入時 FOLIO 會自行產生新的 User UUID，避免 UUID 和 Request Preference 的衝突。
+> **注意**：僅用 `removeRequestPreferences: true`（保留 `id`）無法解決問題，因為舊 UUID 本身就無法重用。
 
-> **副作用**：每次匯入都會產生新 UUID 的 User，而非更新原有記錄。如果其他記錄（如 Loans）已關聯舊的 User UUID，需注意影響。
+#### 測試迭代的正確操作順序
 
-#### 建議的操作順序
+1. **批次刪除 User**（Web Portal Deletion 功能）
+2. **清除孤兒 Request Preference**：
+   - Web Portal：`POST /api/clients/{client_code}/deletion/cleanup-request-preferences`
+   - 或 API 批次刪除：
+     ```bash
+     curl -s "{OKAPI_URL}/request-preference-storage/request-preference?limit=200" \
+       -H 'x-okapi-tenant: {TENANT}' -H "x-okapi-token: $TOKEN" \
+       | jq -r '.requestPreferences[].id' > /tmp/rp_ids.txt
+     while read id; do
+       curl -s -X DELETE "{OKAPI_URL}/request-preference-storage/request-preference/$id" \
+         -H 'x-okapi-tenant: {TENANT}' -H "x-okapi-token: $TOKEN"
+     done < /tmp/rp_ids.txt
+     ```
+3. **設定 UserTransformer**：`"removeIdAndRequestPreferences": true`
+4. **重新執行 transform_users**
+5. **執行 post_users**
+6. **驗證**：確認 Users 數量正確，Request Preferences 為 0
 
-1. 批次刪除 User（Web Portal 會先刪除 Request Preference 再刪除 User）
-2. 確認刪除完成且無失敗記錄
-3. 若需要，執行 cleanup-request-preferences 清除殘留
-4. 在 UserTransformer 設定 `removeIdAndRequestPreferences: true`
-5. 重新執行 UserTransformer 產生新的 JSON
-6. 重新執行 BatchPoster 匯入 User
-
-> **狀態**：此問題的完整解決方案仍在測試中。
+> **副作用**：每次匯入 User 都會取得新的 UUID。如果其他已匯入的記錄（如 Loans）引用舊的 User UUID，關聯會斷開。因此建議在測試迭代中，User 相關的資料（Loans 等）應在 User 匯入後重新匯入。
 
 ### 9.3 Holdings/Items/Instances 不回報 created/updated 數量
 
