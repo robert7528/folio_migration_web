@@ -493,23 +493,25 @@ Request preference for specified user already exists
 
 #### 測試迭代的正確操作順序
 
-1. **批次刪除 User**（Web Portal Deletion 功能）
-2. **清除孤兒 Request Preference**：
-   - Web Portal：`POST /api/clients/{client_code}/deletion/cleanup-request-preferences`
-   - 或 API 批次刪除：
-     ```bash
-     curl -s "{OKAPI_URL}/request-preference-storage/request-preference?limit=200" \
-       -H 'x-okapi-tenant: {TENANT}' -H "x-okapi-token: $TOKEN" \
-       | jq -r '.requestPreferences[].id' > /tmp/rp_ids.txt
-     while read id; do
-       curl -s -X DELETE "{OKAPI_URL}/request-preference-storage/request-preference/$id" \
-         -H 'x-okapi-tenant: {TENANT}' -H "x-okapi-token: $TOKEN"
-     done < /tmp/rp_ids.txt
-     ```
-3. **設定 UserTransformer**：`"removeIdAndRequestPreferences": true`
-4. **重新執行 transform_users**
-5. **執行 post_users**
-6. **驗證**：確認 Users 數量正確，Request Preferences 為 0
+1. **批次刪除 User**（Web Portal Deletion 功能，會自動一併刪除 Request Preference）
+   > Web Portal 的 `deletion_service.py` 在刪除每個 User 前，會先查詢並刪除該 User 的 Request Preference，因此不需要額外清理 RP。
+2. **設定 UserTransformer**：`"removeIdAndRequestPreferences": true`
+3. **重新執行 transform_users**
+4. **執行 post_users**
+5. **驗證**：確認 Users 數量正確
+
+> **若前次匯入產生了孤兒 RP**（例如匯入失敗但 RP 已建立），需在步驟 2 前手動清除：
+> - Web Portal：`POST /api/clients/{client_code}/deletion/cleanup-request-preferences`
+> - 或 API 批次刪除：
+>   ```bash
+>   curl -s "{OKAPI_URL}/request-preference-storage/request-preference?limit=200" \
+>     -H 'x-okapi-tenant: {TENANT}' -H "x-okapi-token: $TOKEN" \
+>     | jq -r '.requestPreferences[].id' > /tmp/rp_ids.txt
+>   while read id; do
+>     curl -s -X DELETE "{OKAPI_URL}/request-preference-storage/request-preference/$id" \
+>       -H 'x-okapi-tenant: {TENANT}' -H "x-okapi-token: $TOKEN"
+>   done < /tmp/rp_ids.txt
+>   ```
 
 > **副作用**：每次匯入 User 都會取得新的 UUID。如果其他已匯入的記錄（如 Loans）引用舊的 User UUID，關聯會斷開。因此建議在測試迭代中，User 相關的資料（Loans 等）應在 User 匯入後重新匯入。
 
