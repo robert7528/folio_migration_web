@@ -186,18 +186,29 @@ def main():
 
     print(f"Found {len(instance_ids)} instance UUIDs")
 
-    # Get FOLIO credentials from environment
+    # Get FOLIO connection from environment
     folio_url = os.environ.get("FOLIO_URL")
     tenant = os.environ.get("FOLIO_TENANT")
-    username = os.environ.get("FOLIO_USER")
-    password = os.environ.get("FOLIO_PASSWORD")
+    token = os.environ.get("FOLIO_TOKEN")
 
-    if not all([folio_url, tenant, username, password]):
-        print("ERROR: Set environment variables: FOLIO_URL, FOLIO_TENANT, FOLIO_USER, FOLIO_PASSWORD")
+    if not folio_url or not tenant:
+        print("ERROR: Set environment variables: FOLIO_URL, FOLIO_TENANT")
+        print("  Auth option 1: FOLIO_TOKEN=<token>")
+        print("  Auth option 2: FOLIO_USER=<user> FOLIO_PASSWORD=<pass>")
         sys.exit(1)
 
-    # Login
-    client = FolioClient.login(folio_url, tenant, username, password)
+    if token:
+        # Use token directly
+        print(f"Using token for {folio_url}")
+        client = FolioClient(folio_url, tenant, token)
+    else:
+        # Login with username/password
+        username = os.environ.get("FOLIO_USER")
+        password = os.environ.get("FOLIO_PASSWORD")
+        if not username or not password:
+            print("ERROR: Set FOLIO_TOKEN or both FOLIO_USER and FOLIO_PASSWORD")
+            sys.exit(1)
+        client = FolioClient.login(folio_url, tenant, username, password)
 
     # Process each instance
     total_holdings = 0
