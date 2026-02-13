@@ -113,6 +113,7 @@
         <div class="card-header">
             <span class="card-title">Execution Logs</span>
             <div class="flex gap-1">
+                <button class="btn btn-sm btn-secondary" onclick="copyLogs()">Copy Logs</button>
                 <a href="#" class="btn btn-sm btn-secondary" id="download-log-btn">Download Log</a>
             </div>
         </div>
@@ -356,6 +357,23 @@ function colorLogLine(line) {
         return `<span class="log-line-info">${escaped}</span>`;
     }
     return escaped;
+}
+
+function copyLogs() {
+    const logOutput = document.getElementById('log-output');
+    const text = logOutput.textContent || logOutput.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+        Notify.success('Logs copied to clipboard');
+    }).catch(() => {
+        // Fallback for older browsers
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        Notify.success('Logs copied to clipboard');
+    });
 }
 
 function toggleSummary() {

@@ -114,6 +114,7 @@
             <label>
                 <input type="checkbox" id="auto-scroll" checked> Auto-scroll
             </label>
+            <button class="btn btn-sm btn-secondary" onclick="copyLogs()">Copy</button>
             <button class="btn btn-sm btn-secondary" onclick="clearLogs()">Clear</button>
         </div>
     </div>
@@ -429,6 +430,22 @@ function colorLogLine(line) {
         return `<span class="log-line-info">${escaped}</span>`;
     }
     return escaped;
+}
+
+function copyLogs() {
+    const logOutput = document.getElementById('log-output');
+    const text = logOutput.textContent || logOutput.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+        Notify.success('Logs copied to clipboard');
+    }).catch(() => {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        Notify.success('Logs copied to clipboard');
+    });
 }
 
 function clearLogs() {
