@@ -271,17 +271,22 @@ class ConfigService:
         )
 
         # Material types mapping template
+        # Column "folio_name" is required by folio_migration_tools RefDataMapping.
+        # Column "MATERIAL_TYPE" must match the source data TSV column name.
         self._write_tsv_template(
             "material_types.tsv",
-            ["legacy_code", "folio_name"],
-            [["BOOK", "book"], ["DVD", "dvd"], ["CD", "sound recording"]],
+            ["folio_name", "MATERIAL_TYPE"],
+            [["book", "BOOK"], ["dvd", "DVD"], ["sound recording", "CD"], ["book", "*"]],
         )
 
         # Loan types mapping template
+        # Column "folio_name" is required by folio_migration_tools RefDataMapping.
+        # Column "LOAN_TYPE" must match the source data TSV column name.
+        # The "*" row is the fallback for unmatched/empty values.
         self._write_tsv_template(
             "loan_types.tsv",
-            ["legacy_code", "folio_name"],
-            [["REGULAR", "Can circulate"], ["RESERVE", "Course reserves"]],
+            ["folio_name", "LOAN_TYPE"],
+            [["Can circulate", "REGULAR"], ["Course reserves", "RESERVE"], ["Can circulate", "*"]],
         )
 
         # User groups mapping template
@@ -297,14 +302,16 @@ class ConfigService:
         )
 
         # Item statuses mapping template
+        # ItemsTransformer requires columns "legacy_code" and "folio_name" (exact names).
+        # Do NOT use "*" wildcard - the tool rejects it for status mapping.
         self._write_tsv_template(
             "item_statuses.tsv",
-            ["legacy_status", "folio_status"],
+            ["legacy_code", "folio_name"],
             [
-                ["AVAILABLE", "Available"],
-                ["CHECKED_OUT", "Checked out"],
-                ["MISSING", "Missing"],
-                ["LOST", "Declared lost"],
+                ["Available", "Available"],
+                ["Checked out", "Checked out"],
+                ["Missing", "Missing"],
+                ["Declared lost", "Declared lost"],
             ],
         )
 
@@ -709,6 +716,7 @@ class ConfigService:
                 "materialTypesMapFileName": "material_types.tsv",
                 "loanTypesMapFileName": "loan_types.tsv",
                 "itemStatusesMapFileName": "item_statuses.tsv",
+                "callNumberTypeMapFileName": "call_number_type_mapping.tsv",
                 "defaultCallNumberTypeName": "Library of Congress classification",
                 "defaultLoanTypeName": "Can circulate",
                 "hridHandling": "default",
