@@ -297,23 +297,29 @@ LBBS	LBBS
 #### 格式
 
 ```
-folio_name	legacy_code
+folio_name	CALL_NUMBER_TYPE
 ```
 
-- 第一欄為 FOLIO 中的索書號類型名稱（必須完全一致）
-- 第二欄為來源資料中的類型代碼
-- 支援通配符 `*` 作為 fallback
+- **`folio_name`**（必須使用此名稱）：FOLIO 中的索書號類型名稱，必須完全一致
+- **第二欄名稱必須與來源 TSV 的欄位名完全一致**（如 `CALL_NUMBER_TYPE`、`call_number_type`）
+- 支援通配符 `*` 作為 fallback（必須有一列 `*`）
+
+> **重要**：`folio_name` 是 folio_migration_tools 的保留欄位名，不可更改。第二欄名稱會被用來查找來源資料中的對應值，必須與 Holdings TSV 的欄位名完全一致。
 
 #### THU 範例
 
 ```tsv
-folio_name	call_number_type
+folio_name	CALL_NUMBER_TYPE
 Dewey Decimal classification	DDC
 Library of Congress classification	LCC
-Dewey Decimal classification	*
+CCL	CCL
+CFC	CFC
+MCD	MCD
+TTC	TTC
+CCL	*
 ```
 
-> 此範例中，來源資料的 `DDC` 對應到 FOLIO 的「Dewey Decimal classification」，`LCC` 對應到「Library of Congress classification」，其餘未匹配的類型預設使用 DDC。
+> THU 有六種索書號分類法：DDC（杜威）、LCC（國會）、CCL（賴永祥中國圖書分類法）、CFC（中國古籍六部分類法）、MCD（音樂雷射唱片分類法）、TTC（東海畢業論文分類法）。Fallback 設為 CCL（最大宗）。
 
 ---
 

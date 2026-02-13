@@ -309,13 +309,16 @@ class ConfigService:
         )
 
         # Call number type mapping template
+        # Column "folio_name" is required by folio_migration_tools RefDataMapping.
+        # Column "CALL_NUMBER_TYPE" must match the source data TSV column name.
+        # The "*" row is the fallback for unmatched values (required).
         self._write_tsv_template(
             "call_number_type_mapping.tsv",
-            ["legacy_type", "folio_name"],
+            ["folio_name", "CALL_NUMBER_TYPE"],
             [
-                ["LC", "Library of Congress classification"],
-                ["DEWEY", "Dewey Decimal classification"],
-                ["LOCAL", "Other scheme"],
+                ["Library of Congress classification", "LCC"],
+                ["Dewey Decimal classification", "DDC"],
+                ["Other scheme", "*"],
             ],
         )
 
@@ -385,7 +388,7 @@ class ConfigService:
                     {"folio_field": "permanentLocationId", "legacy_field": "LOCATION", "value": "", "description": "Permanent location"},
                     {"folio_field": "temporaryLocationId", "legacy_field": "Not mapped", "value": "", "description": "Temporary location"},
                     {"folio_field": "callNumber", "legacy_field": "CALL_NUMBER", "value": "", "description": "Call number"},
-                    {"folio_field": "callNumberTypeId", "legacy_field": "Not mapped", "value": "", "description": "Call number type UUID"},
+                    {"folio_field": "callNumberTypeId", "legacy_field": "CALL_NUMBER_TYPE", "value": "", "description": "Call number type - mapped via call_number_type_mapping.tsv"},
                     {"folio_field": "callNumberPrefix", "legacy_field": "Not mapped", "value": "", "description": "Call number prefix"},
                     {"folio_field": "callNumberSuffix", "legacy_field": "Not mapped", "value": "", "description": "Call number suffix"},
                     {"folio_field": "holdingsTypeId", "legacy_field": "Not mapped", "value": "", "description": "Holdings type UUID"},

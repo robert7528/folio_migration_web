@@ -12,8 +12,8 @@ Example:
     python extract_095_standard.py source_data/instances/bibs.mrc
 
 Output:
-    - holdings.tsv (columns: HOLDINGS_ID, BIB_ID, LOCATION, CALL_NUMBER, NOTE)
-    - items.tsv (columns: ITEM_ID, BIB_ID, HOLDINGS_ID, BARCODE, LOCATION, MATERIAL_TYPE, LOAN_TYPE, CALL_NUMBER, COPY_NUMBER, YEAR, NOTE)
+    - holdings.tsv (columns: HOLDINGS_ID, BIB_ID, LOCATION, CALL_NUMBER, CALL_NUMBER_TYPE, NOTE)
+    - items.tsv (columns: ITEM_ID, BIB_ID, HOLDINGS_ID, BARCODE, LOCATION, MATERIAL_TYPE, LOAN_TYPE, CALL_NUMBER, COPY_NUMBER, YEAR, STATUS, NOTE)
 """
 
 import sys
@@ -139,10 +139,11 @@ def write_holdings_tsv(records_data, output_file):
     - BIB_ID (instanceId)
     - LOCATION (permanentLocationId)
     - CALL_NUMBER (callNumber)
+    - CALL_NUMBER_TYPE (callNumberTypeId) - mapped via call_number_type_mapping.tsv
     - NOTE (notes[0].note) - optional
     """
     # Column names matching default mapping
-    fieldnames = ['HOLDINGS_ID', 'BIB_ID', 'LOCATION', 'CALL_NUMBER', 'NOTE']
+    fieldnames = ['HOLDINGS_ID', 'BIB_ID', 'LOCATION', 'CALL_NUMBER', 'CALL_NUMBER_TYPE', 'NOTE']
 
     # Ensure output directory exists
     Path(output_file).parent.mkdir(parents=True, exist_ok=True)
@@ -163,6 +164,7 @@ def write_holdings_tsv(records_data, output_file):
                     'BIB_ID': data['bib_id'],
                     'LOCATION': data['location'],
                     'CALL_NUMBER': data['full_call_number'],
+                    'CALL_NUMBER_TYPE': data['call_number_type'],
                     'NOTE': '',  # No note from 095
                 })
 
