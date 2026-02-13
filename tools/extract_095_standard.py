@@ -101,14 +101,21 @@ def extract_095_data(marc_file):
                     elif code == 'z':
                         data['full_call_number'] = value
 
-                # Build call number if not provided in $z
-                if not data['full_call_number'] and data['classification']:
+                # Build call number from $d + $e + $y (preferred)
+                # Always prefer $d/$e over $z because THU's $z may include
+                # material type prefix (e.g. "BOOK 332.6 L242 2000")
+                if data['classification']:
                     parts = [data['classification']]
                     if data['cutter']:
                         parts.append(data['cutter'])
                     if data['year']:
                         parts.append(data['year'])
                     data['full_call_number'] = ' '.join(parts)
+                elif data['full_call_number'] and data['material_type']:
+                    # Fallback: use $z but strip material type prefix if present
+                    prefix = data['material_type'] + ' '
+                    if data['full_call_number'].startswith(prefix):
+                        data['full_call_number'] = data['full_call_number'][len(prefix):]
 
                 # Use barcode as item_id if available
                 if data['barcode']:
