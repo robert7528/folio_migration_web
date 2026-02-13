@@ -414,9 +414,9 @@ Instance (書目)
     },
     {
       "folio_field": "permanentLoanTypeId",
-      "legacy_field": "Not mapped",
+      "legacy_field": "loan_type",
       "value": "",
-      "description": "使用 taskConfig 的 defaultLoanTypeName"
+      "description": "透過 loan_types.tsv 映射"
     },
     {
       "folio_field": "permanentLocationId",
@@ -541,13 +541,13 @@ maps	maps
 資料類型對應。
 
 ```tsv
-legacy_type	folio_name
+folio_name	MATERIAL_TYPE
 BOOK	BOOK
 DVD	DVD
 CD	CD
-a	book
-c	sound recording
-*	MIGRATION
+book	a
+sound recording	c
+MIGRATION	*
 ```
 
 ### 3. loan_types.tsv
@@ -555,14 +555,14 @@ c	sound recording
 借閱類型對應。
 
 ```tsv
-legacy_type	folio_name
-CIR	一般圖書(可外借)
-NOCIR	不可外借
-0	Can circulate
-199	Reading room
-42	Can circulate
-33	Can circulate
-*	不可外借
+folio_name	LOAN_TYPE
+一般圖書(可外借)	CIR
+不可外借	NOCIR
+Can circulate	0
+Reading room	199
+Can circulate	42
+Can circulate	33
+不可外借	*
 ```
 
 ### 4. call_number_type_mapping.tsv
@@ -570,7 +570,7 @@ NOCIR	不可外借
 索書號類型對應。
 
 ```tsv
-folio_name	legacy_code
+folio_name	CALL_NUMBER_TYPE
 Dewey Decimal classification	DDC
 Library of Congress classification	LCC
 Library of Congress classification	0

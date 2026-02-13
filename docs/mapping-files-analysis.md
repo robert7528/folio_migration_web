@@ -396,19 +396,19 @@ LB	LB
 #### 4.5.2 material_types.tsv（資料類型映射）
 
 ```tsv
-館藏類型itype	folio_name
+folio_name	MATERIAL_TYPE
 A	A
 BOOK	BOOK
 CD	CD
 DVD	DVD
 EB	EB
-*	MIGRATION
+MIGRATION	*
 ```
 
 #### 4.5.3 loan_types.tsv（借閱類型映射）
 
 ```tsv
-folio_name	ITEM_TYPE_ID
+folio_name	LOAN_TYPE
 Reading room	33
 Can circulate	42
 Can circulate	*

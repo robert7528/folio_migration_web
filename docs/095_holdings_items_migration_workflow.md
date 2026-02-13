@@ -557,9 +557,9 @@ wc -l source_data/items/items_from_095.tsv
     },
     {
       "folio_field": "permanentLoanTypeId",
-      "legacy_field": "Not mapped",
+      "legacy_field": "loan_type",
       "value": "",
-      "description": "Uses defaultLoanTypeName from taskConfig"
+      "description": "Mapped via loan_types.tsv"
     },
     {
       "folio_field": "permanentLocationId",
@@ -751,14 +751,14 @@ REF	main/reference
 建立 `$PROJECT/mapping_files/material_types.tsv`：
 
 ```tsv
-legacy_code	folio_name
-BOOK	book
-DVD	dvd
-CD	sound recording
-VHS	video recording
-SERIAL	serial
-MAP	map
-*	unspecified
+folio_name	MATERIAL_TYPE
+book	BOOK
+dvd	DVD
+sound recording	CD
+video recording	VHS
+serial	SERIAL
+map	MAP
+unspecified	*
 ```
 
 ### loan_types.tsv
@@ -766,13 +766,13 @@ MAP	map
 建立 `$PROJECT/mapping_files/loan_types.tsv`：
 
 ```tsv
-legacy_code	folio_name
-CIR	Can circulate
-CIRC	Can circulate
-NOCIR	Cannot circulate
-REF	Cannot circulate
-RESERVE	Course reserves
-*	Can circulate
+folio_name	LOAN_TYPE
+Can circulate	CIR
+Can circulate	CIRC
+Cannot circulate	NOCIR
+Cannot circulate	REF
+Course reserves	RESERVE
+Can circulate	*
 ```
 
 ### call_number_type_mapping.tsv
@@ -780,7 +780,7 @@ RESERVE	Course reserves
 建立 `$PROJECT/mapping_files/call_number_type_mapping.tsv`：
 
 ```tsv
-folio_name	legacy_code
+folio_name	CALL_NUMBER_TYPE
 Dewey Decimal classification	DDC
 Dewey Decimal classification	DEWEY
 Library of Congress classification	LCC
@@ -802,8 +802,9 @@ CHECKEDOUT	Checked out
 MISSING	Missing
 LOST	Declared lost
 DAMAGED	Restricted
-*	Available
 ```
+
+> **注意**：item_statuses.tsv 不允許 `*` 通配符。未匹配的狀態會自動使用 `Available` 作為預設值。
 
 ---
 
@@ -1444,13 +1445,13 @@ LM46	LM46
 ### material_types.tsv (THU)
 
 ```tsv
-legacy_code	folio_name
-BOOK	book
-DVD	dvd
-CD	sound recording
-*	unspecified
+folio_name	MATERIAL_TYPE
+book	BOOK
+dvd	DVD
+sound recording	CD
+unspecified	*
 ```
 
 ---
 
-*文件更新日期: 2026-02-05*
+*文件更新日期: 2026-02-13*
