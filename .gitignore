@@ -21,9 +21,8 @@ venv/
 *.sqlite
 *.sqlite3
 
-# Client data (may contain credentials & uploaded files)
-clients/**/.env
-clients/**/data/
+# Client runtime data (created by Web Portal, not version controlled)
+clients/
 
 # IDE & editor
 .vscode/
