@@ -68,7 +68,14 @@ folio_migration_web/
 ├── static/               # CSS, JavaScript
 ├── templates/            # HTML templates
 ├── deployment/           # Deployment configs
-└── docs/                 # Migration documentation
+├── docs/                 # Migration documentation
+├── tools/                # Migration utility scripts
+│   ├── extract_095_standard.py      # Extract Holdings/Items from MARC 095
+│   ├── delete_holdings_by_instance.py  # Delete Holdings/Items from FOLIO
+│   ├── folio_task_analyzer.py       # Analyze migration task configs
+│   └── get_thu_env.sh               # THU FOLIO environment setup
+└── config/               # Client mapping files (version controlled)
+    └── thu/mapping_files/  # THU locations, material types, etc.
 ```
 
 ## License
