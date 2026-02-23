@@ -730,21 +730,22 @@ wc -l source_data/items/items_from_095.tsv
 建立 `$PROJECT/mapping_files/locations.tsv`：
 
 ```tsv
-legacy_code	folio_code
+folio_code	LOCATION
 LB3F	LB3F
 LB4F	LB4F
 LB45	LB45
 LBA	LBA
 LBBS	LBBS
-MAIN	main/stacks
-REF	main/reference
-*	Migration
+MAIN	MAIN
+REF	REF
+Migration	*
 ```
 
 > **說明**：
-> - 第一欄是 095$b 的值（來源系統位置代碼）
-> - 第二欄是 FOLIO 位置代碼
-> - `*` 是通配符，未對應的值會使用此預設
+> - 第一欄 `folio_code` 是 FOLIO 位置代碼（程式會比對 FOLIO 中 location 的 `code` 屬性）
+> - 第二欄 `LOCATION` 是來源資料中的位置欄位值
+> - `*` 放在第二欄作為通配符，未對應的值會使用該行的 `folio_code` 作為預設
+> - **注意**：欄位名稱必須是 `folio_code`（不是 `folio_name` 或 `legacy_code`），否則工具會報錯
 
 ### material_types.tsv
 
@@ -1111,6 +1112,8 @@ curl -s -X GET "$FOLIO_URL/item-storage/items?query=holdingsRecordId==$HOLDINGS_
 
 #### 標準版腳本完整程式碼
 
+> **注意**：以下為精簡版，完整最新版本請參考 `tools/extract_095_standard.py`。
+
 ```python
 #!/usr/bin/env python3
 """
@@ -1122,16 +1125,14 @@ mapping templates (holdingsrecord_mapping.json, item_mapping.json).
 Usage:
     python extract_095_standard.py input.mrc [holdings_output.tsv] [items_output.tsv]
 
-Example:
-    python extract_095_standard.py source_data/instances/bibs.mrc
-
 Output:
-    - holdings.tsv (columns: HOLDINGS_ID, BIB_ID, LOCATION, CALL_NUMBER, NOTE)
+    - holdings.tsv (columns: HOLDINGS_ID, BIB_ID, LOCATION, CALL_NUMBER, CALL_NUMBER_TYPE, NOTE)
     - items.tsv (columns: ITEM_ID, BIB_ID, HOLDINGS_ID, BARCODE, LOCATION, ...)
 """
 
 import sys
 import csv
+import re
 from pathlib import Path
 
 try:
@@ -1141,14 +1142,19 @@ except ImportError:
     sys.exit(1)
 
 
+def normalize_whitespace(text):
+    """Normalize whitespace: collapse multiple spaces to single space and strip."""
+    if not text:
+        return ''
+    return re.sub(r'\s+', ' ', text).strip()
+
+
 def extract_095_data(marc_file):
     """Extract 095 field data from MARC file."""
     records_data = []
     record_count = 0
     records_with_095 = 0
     item_counter = 0
-
-    print(f"Reading MARC file: {marc_file}")
 
     with open(marc_file, 'rb') as f:
         reader = MARCReader(f)
@@ -1183,38 +1189,34 @@ def extract_095_data(marc_file):
                 }
 
                 for subfield in f095:
-                    code, value = subfield[0], subfield[1].strip()
-                    if code == 'a':
-                        data['library'] = value
-                    elif code == 'b':
-                        data['location'] = value
-                    elif code == 'c':
-                        data['barcode'] = value
-                    elif code == 'd':
-                        data['classification'] = value
-                    elif code == 'e':
-                        data['cutter'] = value
-                    elif code == 'p':
-                        data['material_type'] = value
-                    elif code == 'r':
-                        data['price'] = value
-                    elif code == 's':
-                        data['date'] = value
-                    elif code == 't':
-                        data['call_number_type'] = value
-                    elif code == 'y':
-                        data['year'] = value
-                    elif code == 'z':
-                        data['full_call_number'] = value
+                    code, value = subfield[0], normalize_whitespace(subfield[1])
+                    if code == 'a':   data['library'] = value
+                    elif code == 'b': data['location'] = value
+                    elif code == 'c': data['barcode'] = value
+                    elif code == 'd': data['classification'] = value
+                    elif code == 'e': data['cutter'] = value
+                    elif code == 'p': data['material_type'] = value
+                    elif code == 'r': data['price'] = value
+                    elif code == 's': data['date'] = value
+                    elif code == 't': data['call_number_type'] = value
+                    elif code == 'y': data['year'] = value
+                    elif code == 'z': data['full_call_number'] = value
 
-                # Build call number if not provided in $z
-                if not data['full_call_number'] and data['classification']:
+                # Build call number from $d + $e + $y (preferred)
+                # Always prefer $d/$e over $z because some systems' $z may include
+                # material type prefix (e.g. "BOOK 332.6 L242 2000")
+                if data['classification']:
                     parts = [data['classification']]
                     if data['cutter']:
                         parts.append(data['cutter'])
                     if data['year']:
                         parts.append(data['year'])
                     data['full_call_number'] = ' '.join(parts)
+                elif data['full_call_number'] and data['material_type']:
+                    # Fallback: use $z but strip material type prefix if present
+                    prefix = data['material_type'] + ' '
+                    if data['full_call_number'].startswith(prefix):
+                        data['full_call_number'] = data['full_call_number'][len(prefix):]
 
                 # Use barcode as item_id if available
                 if data['barcode']:
@@ -1222,22 +1224,18 @@ def extract_095_data(marc_file):
 
                 records_data.append(data)
 
-    print(f"Total MARC records: {record_count}")
-    print(f"Records with 095: {records_with_095}")
-    print(f"Total 095 fields (items): {len(records_data)}")
-
     return records_data
 
 
-def generate_holdings_id(bib_id, location, call_number):
-    """Generate a unique holdings ID based on bib_id + location + call_number."""
-    combined = f"{bib_id}-{location}-{call_number}"
-    return combined.replace(' ', '_').replace('/', '-')[:50]
+def generate_holdings_id(bib_id, location, material_type, call_number):
+    """Generate a unique holdings ID based on bib_id + location + material_type + call_number."""
+    combined = f"{bib_id}-{location}-{material_type}_{call_number}"
+    return combined.replace(' ', '_').replace('/', '-')
 
 
 def write_holdings_tsv(records_data, output_file):
     """Write holdings TSV file with standard column names."""
-    fieldnames = ['HOLDINGS_ID', 'BIB_ID', 'LOCATION', 'CALL_NUMBER', 'NOTE']
+    fieldnames = ['HOLDINGS_ID', 'BIB_ID', 'LOCATION', 'CALL_NUMBER', 'CALL_NUMBER_TYPE', 'NOTE']
 
     Path(output_file).parent.mkdir(parents=True, exist_ok=True)
 
@@ -1247,10 +1245,11 @@ def write_holdings_tsv(records_data, output_file):
 
         seen = {}
         for data in records_data:
-            key = (data['bib_id'], data['location'], data['full_call_number'])
+            key = (data['bib_id'], data['location'], data['material_type'], data['full_call_number'])
             if key not in seen:
                 holdings_id = generate_holdings_id(
-                    data['bib_id'], data['location'], data['full_call_number']
+                    data['bib_id'], data['location'],
+                    data['material_type'], data['full_call_number']
                 )
                 seen[key] = holdings_id
                 writer.writerow({
@@ -1258,10 +1257,10 @@ def write_holdings_tsv(records_data, output_file):
                     'BIB_ID': data['bib_id'],
                     'LOCATION': data['location'],
                     'CALL_NUMBER': data['full_call_number'],
+                    'CALL_NUMBER_TYPE': data['call_number_type'],
                     'NOTE': '',
                 })
 
-    print(f"Holdings: {len(seen)} unique records -> {output_file}")
     return seen
 
 
@@ -1280,7 +1279,7 @@ def write_items_tsv(records_data, holdings_map, output_file):
         writer.writeheader()
 
         for data in records_data:
-            key = (data['bib_id'], data['location'], data['full_call_number'])
+            key = (data['bib_id'], data['location'], data['material_type'], data['full_call_number'])
             holdings_id = holdings_map.get(key, '')
 
             writer.writerow({
@@ -1297,47 +1296,6 @@ def write_items_tsv(records_data, holdings_map, output_file):
                 'STATUS': 'Available',
                 'NOTE': '',
             })
-
-    print(f"Items: {len(records_data)} records -> {output_file}")
-
-
-def main():
-    if len(sys.argv) < 2:
-        print(__doc__)
-        sys.exit(1)
-
-    marc_file = sys.argv[1]
-
-    if len(sys.argv) >= 3:
-        holdings_output = sys.argv[2]
-    else:
-        base_dir = Path(marc_file).parent.parent
-        holdings_output = base_dir / 'holdings' / 'holdings.tsv'
-
-    if len(sys.argv) >= 4:
-        items_output = sys.argv[3]
-    else:
-        base_dir = Path(marc_file).parent.parent
-        items_output = base_dir / 'items' / 'items.tsv'
-
-    records_data = extract_095_data(marc_file)
-
-    if not records_data:
-        print("\nNo 095 fields found in the MARC file.")
-        sys.exit(0)
-
-    print(f"\n{'='*60}")
-    print("Writing output files (standard column names)")
-    print('='*60)
-
-    holdings_map = write_holdings_tsv(records_data, holdings_output)
-    write_items_tsv(records_data, holdings_map, items_output)
-
-    print("\nDone!")
-
-
-if __name__ == '__main__':
-    main()
 ```
 
 #### 使用標準版的簡化流程
@@ -1382,16 +1340,18 @@ python -m folio_migration_tools.migration_tasks.migration_task_base \
 
 **holdings.tsv**:
 ```tsv
-HOLDINGS_ID	BIB_ID	LOCATION	CALL_NUMBER	NOTE
-00301888-LB3F-332.6_L242_2000	00301888	LB3F	332.6 L242 2000
-00301889-LB4F-658.4_S123_2001	00301889	LB4F	658.4 S123 2001
+HOLDINGS_ID	BIB_ID	LOCATION	CALL_NUMBER	CALL_NUMBER_TYPE	NOTE
+00301888-LB3F-BOOK_332.6_L242_2000	00301888	LB3F	332.6 L242 2000	DDC
+00301889-LB4F-BOOK_658.4_S123_2001	00301889	LB4F	658.4 S123 2001	DDC
 ```
+
+> **注意**：HOLDINGS_ID 格式為 `{bib_id}-{location}-{material_type}_{call_number}`，包含 material_type 以區分同一書目+位置+索書號但不同資料類型的館藏。
 
 **items.tsv**:
 ```tsv
 ITEM_ID	BIB_ID	HOLDINGS_ID	BARCODE	LOCATION	MATERIAL_TYPE	LOAN_TYPE	CALL_NUMBER	COPY_NUMBER	YEAR	STATUS	NOTE
-W228135	00301888	00301888-LB3F-332.6_L242_2000	W228135	LB3F	BOOK		332.6 L242 2000		2000	Available
-W228136	00301889	00301889-LB4F-658.4_S123_2001	W228136	LB4F	BOOK		658.4 S123 2001		2001	Available
+W228135	00301888	00301888-LB3F-BOOK_332.6_L242_2000	W228135	LB3F	BOOK		332.6 L242 2000		2000	Available
+W228136	00301889	00301889-LB4F-BOOK_658.4_S123_2001	W228136	LB4F	BOOK		658.4 S123 2001		2001	Available
 ```
 
 #### 優點
@@ -1428,7 +1388,7 @@ W228136	00301889	00301889-LB4F-658.4_S123_2001	W228136	LB4F	BOOK		658.4 S123 200
 ### locations.tsv (THU)
 
 ```tsv
-legacy_code	folio_code
+folio_code	LOCATION
 LB3F	LB3F
 LB4F	LB4F
 LB45	LB45
@@ -1439,8 +1399,10 @@ LBCD	LBCD
 LBCH	LBCH
 LM45	LM45
 LM46	LM46
-*	Migration
+Migration	*
 ```
+
+> **重要**：locations.tsv 的欄位標題必須是 `folio_code`（第一欄）和來源資料欄位名如 `LOCATION`（第二欄）。通配符 `*` 放在第二欄（來源值），對應的 `folio_code` 放在第一欄。
 
 ### material_types.tsv (THU)
 
@@ -1454,4 +1416,4 @@ unspecified	*
 
 ---
 
-*文件更新日期: 2026-02-13*
+*文件更新日期: 2026-02-23*

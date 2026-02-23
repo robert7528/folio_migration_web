@@ -342,10 +342,10 @@ value1	value2	FOLIO_VALUE
 萬用字元 `*` 用於設定預設對應：
 
 ```tsv
-館藏室location	folio_code
+folio_code	LOCATION
 00AT	00AT
 00AV	00AV
-*	Migration
+Migration	*
 ```
 
 **規則：**
@@ -385,13 +385,15 @@ msl	jnlDesk	*	JOURDESK
 
 **範例（migration_thu）：**
 ```tsv
-館藏室location	folio_code
+folio_code	LOCATION
 00AT	00AT
 00AV	00AV
 LB	LB
 圖書館	圖書館
-*	Migration
+Migration	*
 ```
+
+> **重要**：locations.tsv 第一欄必須是 `folio_code`（對應 FOLIO location 的 `code` 屬性），第二欄是來源資料的欄位名稱。通配符 `*` 放在來源值欄位（第二欄），表示預設對應。
 
 #### 4.5.2 material_types.tsv（資料類型映射）
 
@@ -737,10 +739,10 @@ msl	jnlDesk	*	JOURDESK
 
 **migration_thu（單欄位對應）：**
 ```tsv
-館藏室location	folio_code
+folio_code	LOCATION
 00AT	00AT
 LB	LB
-*	Migration
+Migration	*
 ```
 
 **差異：**
@@ -760,11 +762,11 @@ book	*
 
 **migration_thu：**
 ```tsv
-館藏類型itype	folio_name
+folio_name	MATERIAL_TYPE
 A	A
 BOOK	BOOK
 CD	CD
-*	MIGRATION
+MIGRATION	*
 ```
 
 **差異：**
@@ -896,4 +898,5 @@ CD	CD
 ---
 
 *文件產生日期：2025-01-26*
+*最後更新日期：2026-02-23*
 *分析工具：Claude Code*

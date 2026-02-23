@@ -523,7 +523,7 @@ Instance (書目)
 位置代碼對應，將來源系統的位置代碼轉換為 FOLIO 位置代碼。
 
 ```tsv
-legacy_code	folio_code
+folio_code	LOCATION
 LB3F	LB3F
 LB4F	LB4F
 ACDPM	ACDPM
@@ -531,10 +531,14 @@ MAIN	MAIN
 REN	REN
 jnlDesk	jnlDesk
 maps	maps
-*	Migration
+Migration	*
 ```
 
-> **注意**: `*` 為通配符，未對應到的值會使用此預設值。
+> **注意**:
+> - 第一欄 `folio_code` 必須是 FOLIO location 的 `code` 值（程式比對 FOLIO 中 location 的 `code` 屬性）
+> - 第二欄是來源資料的欄位名稱（如 `LOCATION`），值為來源資料中的位置代碼
+> - 通配符 `*` 放在第二欄（來源值），表示未匹配的值使用第一欄的 `folio_code` 作為預設
+> - **欄位名稱必須是 `folio_code`**（不是 `folio_name` 或 `legacy_code`），否則工具會報 CRITICAL 錯誤
 
 ### 2. material_types.tsv
 
@@ -732,20 +736,24 @@ python -m folio_migration_tools.migration_tasks.migration_task_base \
 
 ### 提取後的 TSV 結構
 
-**Holdings TSV** (`holdings_from_095.tsv`):
+**Holdings TSV** (`holdings.tsv`，使用標準版腳本 extract_095_standard.py):
 
 ```tsv
-bib_id	location	call_number	call_number_type
-00301888	LB3F	BOOK 332.6 L242 2000	DDC
-00301889	LB4F	BOOK 658.4 S123 2001	DDC
+HOLDINGS_ID	BIB_ID	LOCATION	CALL_NUMBER	CALL_NUMBER_TYPE	NOTE
+00301888-LB3F-BOOK_332.6_L242_2000	00301888	LB3F	332.6 L242 2000	DDC
+00301889-LB4F-BOOK_658.4_S123_2001	00301889	LB4F	658.4 S123 2001	DDC
 ```
 
-**Items TSV** (`items_from_095.tsv`):
+> **注意**：
+> - HOLDINGS_ID 格式為 `{bib_id}-{location}-{material_type}_{call_number}`
+> - Call number 不包含 material type 前綴（腳本會自動從 $z 中去除）
+
+**Items TSV** (`items.tsv`，使用標準版腳本 extract_095_standard.py):
 
 ```tsv
-bib_id	barcode	location	material_type	call_number	year
-00301888	W228135	LB3F	BOOK	BOOK 332.6 L242 2000	2000
-00301889	W228136	LB4F	BOOK	BOOK 658.4 S123 2001	2001
+ITEM_ID	BIB_ID	HOLDINGS_ID	BARCODE	LOCATION	MATERIAL_TYPE	LOAN_TYPE	CALL_NUMBER	COPY_NUMBER	YEAR	STATUS	NOTE
+W228135	00301888	00301888-LB3F-BOOK_332.6_L242_2000	W228135	LB3F	BOOK		332.6 L242 2000		2000	Available
+W228136	00301889	00301889-LB4F-BOOK_658.4_S123_2001	W228136	LB4F	BOOK		658.4 S123 2001		2001	Available
 ```
 
 ### TaskConfig 設定 (`taskConfig_095.json`)
@@ -1008,4 +1016,4 @@ iteration_folder/
 
 ---
 
-*文件更新日期: 2026-02-05*
+*文件更新日期: 2026-02-23*
