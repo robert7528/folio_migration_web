@@ -766,8 +766,6 @@ class ConfigService:
                 "fallbackServicePointId": "",
                 "openLoansFiles": [{"file_name": "loans.tsv", "service_point_id": ""}],
                 "startingRow": 1,
-                "item_files": [{"file_name": "folio_items_transform_items.json"}],
-                "patron_files": [{"file_name": "folio_users_transform_users.json"}],
             }
         ]
 
