@@ -347,6 +347,11 @@ class ExecutionService:
         if match:
             result["total"] = int(match.group(1))
 
+        # LoansMigrator: "Loaded and validated 27 loans in total"
+        match = re.search(r"Loaded and validated (\d+) loans in total", line, re.IGNORECASE)
+        if match:
+            result["total"] = int(match.group(1))
+
         # folio_migration_tools: "14 records processed"
         match = re.search(r"(\d+) records processed", line, re.IGNORECASE)
         if match:
@@ -471,6 +476,7 @@ class ExecutionService:
                 r"Number of rows in \S+\s*\|\s*(\d+)",
                 r"Total records\s*\|\s*(\d+)",
                 r"Source data file contains (\d+) rows",
+                r"Processed pre-validated loans\s*\|\s*(\d+)",
             ]
             for pattern in total_patterns:
                 match = re.search(pattern, content, re.IGNORECASE)
@@ -493,6 +499,7 @@ class ExecutionService:
                 r"Records matched to Instances\s*\|\s*(\d+)",
                 r"Unique ID:s written to legacy map\s*\|\s*(\d+)",
                 r"Saving map of (\d+) old and new IDs",
+                r"Successfully checked out\s*\|\s*(\d+)",
             ]
             for pattern in success_patterns:
                 match = re.search(pattern, content, re.IGNORECASE)
@@ -509,6 +516,7 @@ class ExecutionService:
                 r"Failed to post first time\s*\|\s*(\d+)",
                 r"Records failed\s*\|\s*(\d+)",
                 r"Records not matched to Instances\s*\|\s*(\d+)",
+                r"Failed loans\s*\|\s*(\d+)",
                 r"Failed\s*\|\s*(\d+)",
                 r"Errors\s*\|\s*(\d+)",
             ]
