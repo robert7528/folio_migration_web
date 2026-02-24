@@ -165,6 +165,53 @@ class FolioDeletionClient(FolioApiClient):
         except Exception as e:
             return {"status": "failed", "user_id": user_id, "error": str(e)}
 
+    async def delete_loan_by_item_barcode(self, item_barcode: str) -> Dict[str, Any]:
+        """Delete an open loan by looking up the item barcode in FOLIO."""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # Query for open loans by item barcode
+                url = f"{self.folio_url}/loan-storage/loans"
+                query = f'(itemBarcode=="{item_barcode}" and status.name==Open)'
+                params = {"query": query, "limit": 1}
+                response = await client.get(url, headers=self.headers, params=params)
+
+                if response.status_code != 200:
+                    return {
+                        "status": "failed",
+                        "id": item_barcode,
+                        "error": f"Query failed: HTTP {response.status_code}"
+                    }
+
+                data = response.json()
+                loans = data.get("loans", [])
+                if not loans:
+                    return {
+                        "status": "not_found",
+                        "id": item_barcode,
+                        "error": f"No open loan found for item barcode {item_barcode}"
+                    }
+
+                loan_id = loans[0]["id"]
+                delete_url = f"{self.folio_url}/loan-storage/loans/{loan_id}"
+                del_response = await client.delete(delete_url, headers=self.headers)
+
+                if del_response.status_code == 204:
+                    return {"status": "deleted", "id": item_barcode}
+                elif del_response.status_code == 404:
+                    return {
+                        "status": "not_found",
+                        "id": item_barcode,
+                        "error": f"Loan {loan_id} not found"
+                    }
+                else:
+                    return {
+                        "status": "failed",
+                        "id": item_barcode,
+                        "error": f"HTTP {del_response.status_code}: {del_response.text}"
+                    }
+        except Exception as e:
+            return {"status": "failed", "id": item_barcode, "error": str(e)}
+
     async def _delete_record(self, endpoint: str, record_id: str) -> Dict[str, Any]:
         """Generic record deletion method."""
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -382,6 +429,11 @@ class DeletionService:
             external_system_id = local_record.get("externalSystemId") if local_record else None
             return await folio_client.delete_user(record_id, external_system_id)
 
+        elif record_type == RecordType.LOANS:
+            # For loans, record_id is actually the item_barcode
+            item_barcode = local_record.get("item_barcode", record_id) if local_record else record_id
+            return await folio_client.delete_loan_by_item_barcode(item_barcode)
+
         return {"status": "skipped", "error": f"Unsupported record type: {record_type}"}
 
     def _get_record_type(self, task_type: str, task_name: str = "") -> Optional[RecordType]:
@@ -392,6 +444,7 @@ class DeletionService:
             "ItemsTransformer": RecordType.ITEMS,
             "UserTransformer": RecordType.USERS,
             "BibsAndItemsTransformer": RecordType.INSTANCES,
+            "LoansMigrator": RecordType.LOANS,
         }
 
         # Direct mapping
@@ -422,6 +475,14 @@ class DeletionService:
         results_path = iteration_path / "results"
 
         if not results_path.exists():
+            return None
+
+        # For LoansMigrator, use the source loans.tsv file
+        if execution.task_type == "LoansMigrator":
+            source_path = iteration_path / "source_data" / "loans"
+            if source_path.exists():
+                for f in source_path.glob("loans.tsv"):
+                    return f
             return None
 
         # For BatchPoster tasks, find the Transformer output file (the input file for posting)
@@ -455,7 +516,19 @@ class DeletionService:
         return None
 
     def _load_records(self, file_path: Path, record_type: RecordType) -> List[Dict]:
-        """Load records from local JSON file."""
+        """Load records from local JSON or TSV file."""
+        # For loans, read TSV file with item_barcode as the identifier
+        if record_type == RecordType.LOANS:
+            import csv
+            records = []
+            with open(file_path, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f, delimiter="\t")
+                for row in reader:
+                    barcode = row.get("item_barcode", "").strip()
+                    if barcode:
+                        records.append({"id": barcode, "item_barcode": barcode})
+            return records
+
         content = file_path.read_text(encoding="utf-8")
 
         # Handle JSONL format (one JSON object per line)

@@ -302,6 +302,7 @@ async def start_deletion(
         "ItemsTransformer": "items",
         "UserTransformer": "users",
         "BibsAndItemsTransformer": "instances",
+        "LoansMigrator": "loans",
     }
     record_type = task_type_mapping.get(execution.task_type)
 
