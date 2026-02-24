@@ -169,9 +169,31 @@ class FolioDeletionClient(FolioApiClient):
         """Delete an open loan by looking up the item barcode in FOLIO."""
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                # Query for open loans by item barcode
+                # Step 1: Look up item UUID from barcode
+                item_url = f"{self.folio_url}/item-storage/items"
+                item_params = {"query": f'barcode=="{item_barcode}"', "limit": 1}
+                item_response = await client.get(item_url, headers=self.headers, params=item_params)
+
+                if item_response.status_code != 200:
+                    return {
+                        "status": "failed",
+                        "id": item_barcode,
+                        "error": f"Item query failed: HTTP {item_response.status_code}"
+                    }
+
+                items = item_response.json().get("items", [])
+                if not items:
+                    return {
+                        "status": "not_found",
+                        "id": item_barcode,
+                        "error": f"No item found for barcode {item_barcode}"
+                    }
+
+                item_id = items[0]["id"]
+
+                # Step 2: Query for open loans by itemId
                 url = f"{self.folio_url}/loan-storage/loans"
-                query = f'(itemBarcode=="{item_barcode}" and status.name==Open)'
+                query = f'(itemId=="{item_id}" and status.name==Open)'
                 params = {"query": query, "limit": 1}
                 response = await client.get(url, headers=self.headers, params=params)
 
@@ -179,7 +201,7 @@ class FolioDeletionClient(FolioApiClient):
                     return {
                         "status": "failed",
                         "id": item_barcode,
-                        "error": f"Query failed: HTTP {response.status_code}"
+                        "error": f"Loan query failed: HTTP {response.status_code}"
                     }
 
                 data = response.json()
@@ -188,7 +210,7 @@ class FolioDeletionClient(FolioApiClient):
                     return {
                         "status": "not_found",
                         "id": item_barcode,
-                        "error": f"No open loan found for item barcode {item_barcode}"
+                        "error": f"No open loan found for item {item_barcode}"
                     }
 
                 loan_id = loans[0]["id"]
