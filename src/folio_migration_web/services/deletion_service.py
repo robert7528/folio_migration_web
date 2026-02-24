@@ -190,7 +190,16 @@ class FolioDeletionClient(FolioApiClient):
                 response = await client.post(url, json=payload, headers=self.headers)
 
                 if response.status_code == 200:
-                    return {"status": "deleted", "id": item_barcode}
+                    # Check if a loan was actually closed
+                    resp_data = response.json()
+                    if resp_data.get("loan"):
+                        return {"status": "deleted", "id": item_barcode}
+                    else:
+                        return {
+                            "status": "not_found",
+                            "id": item_barcode,
+                            "error": "No open loan for this item (checkin processed but no loan closed)"
+                        }
                 elif response.status_code == 422:
                     # 422 usually means item not found or no open loan
                     error_msg = response.text
