@@ -180,6 +180,21 @@ class FolioDeletionClient(FolioApiClient):
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
+                # First check if item has an open loan before calling checkin
+                loan_url = f"{self.folio_url}/circulation/loans"
+                loan_params = {"query": f'(itemBarcode=="{item_barcode}" and status.name==Open)', "limit": 1}
+                loan_response = await client.get(loan_url, headers=self.headers, params=loan_params)
+
+                if loan_response.status_code == 200:
+                    loans = loan_response.json().get("loans", [])
+                    if not loans:
+                        return {
+                            "status": "not_found",
+                            "id": item_barcode,
+                            "error": "No open loan for this item"
+                        }
+
+                # Has open loan, proceed with checkin
                 url = f"{self.folio_url}/circulation/check-in-by-barcode"
                 check_in_date = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000+00:00")
                 payload = {
@@ -190,18 +205,8 @@ class FolioDeletionClient(FolioApiClient):
                 response = await client.post(url, json=payload, headers=self.headers)
 
                 if response.status_code == 200:
-                    # Check if a loan was actually closed
-                    resp_data = response.json()
-                    if resp_data.get("loan"):
-                        return {"status": "deleted", "id": item_barcode}
-                    else:
-                        return {
-                            "status": "not_found",
-                            "id": item_barcode,
-                            "error": "No open loan for this item (checkin processed but no loan closed)"
-                        }
+                    return {"status": "deleted", "id": item_barcode}
                 elif response.status_code == 422:
-                    # 422 usually means item not found or no open loan
                     error_msg = response.text
                     try:
                         error_data = response.json()
