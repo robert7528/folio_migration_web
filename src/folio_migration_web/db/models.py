@@ -40,6 +40,9 @@ class Client(Base):
     # Notes
     notes = Column(Text, nullable=True)
 
+    # SMTP backup (original host saved when disabling SMTP)
+    smtp_original_host = Column(Text, nullable=True)
+
     def __repr__(self):
         return f"<Client {self.client_code}: {self.client_name}>"
 

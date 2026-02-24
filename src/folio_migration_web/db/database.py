@@ -56,6 +56,8 @@ def _run_migrations():
         ("executions", "pre_execution_count", "ALTER TABLE executions ADD COLUMN pre_execution_count INTEGER"),
         # Add validation_type to distinguish record vs count_check validations
         ("validations", "validation_type", "ALTER TABLE validations ADD COLUMN validation_type VARCHAR(20) DEFAULT 'record'"),
+        # Add smtp_original_host for SMTP toggle feature
+        ("clients", "smtp_original_host", "ALTER TABLE clients ADD COLUMN smtp_original_host TEXT"),
     ]
 
     with engine.connect() as conn:

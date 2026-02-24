@@ -55,6 +55,7 @@ from .api import clients, credentials, files, config_editor, health, tasks, exec
 
 app.include_router(clients.router)
 app.include_router(credentials.router)
+app.include_router(credentials.smtp_router)
 app.include_router(files.router)
 app.include_router(config_editor.router)
 app.include_router(health.router)

@@ -312,6 +312,215 @@ async def refresh_reference_data(
         raise HTTPException(status_code=500, detail=f"Failed to fetch reference data: {str(e)}")
 
 
+# ============================================================
+# SMTP Configuration
+# ============================================================
+
+smtp_router = APIRouter(prefix="/api/clients/{client_code}/smtp", tags=["smtp"])
+
+
+async def _get_folio_token(client: ClientModel) -> tuple[str, str]:
+    """Authenticate and get FOLIO token. Returns (token, error_message)."""
+    if not client.credentials_set:
+        raise HTTPException(status_code=400, detail="FOLIO credentials not set")
+
+    manager = get_credential_manager()
+    username = manager.decrypt(client.encrypted_username)
+    password = manager.decrypt(client.encrypted_password)
+
+    async with httpx.AsyncClient(timeout=30.0) as http_client:
+        auth_url = f"{client.folio_url}/authn/login"
+        headers = {
+            "Content-Type": "application/json",
+            "x-okapi-tenant": client.tenant_id,
+        }
+        response = await http_client.post(
+            auth_url, json={"username": username, "password": password}, headers=headers
+        )
+        if response.status_code not in (200, 201):
+            raise HTTPException(status_code=502, detail="FOLIO authentication failed")
+
+        token = response.headers.get("x-okapi-token")
+        if not token:
+            body = response.json()
+            token = body.get("okapiToken") or body.get("accessToken")
+        if not token:
+            raise HTTPException(status_code=502, detail="Failed to obtain FOLIO token")
+
+        return token
+
+
+@smtp_router.get("")
+async def get_smtp_status(
+    client_code: str,
+    db: Session = Depends(get_db),
+):
+    """Get SMTP configuration status from FOLIO."""
+    client = db.query(ClientModel).filter(ClientModel.client_code == client_code).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client '{client_code}' not found")
+
+    token = await _get_folio_token(client)
+
+    async with httpx.AsyncClient(timeout=30.0) as http_client:
+        headers = {
+            "x-okapi-tenant": client.tenant_id,
+            "x-okapi-token": token,
+        }
+        response = await http_client.get(
+            f"{client.folio_url}/smtp-configuration", headers=headers
+        )
+        if response.status_code != 200:
+            raise HTTPException(status_code=502, detail="Failed to query SMTP configuration")
+
+        data = response.json()
+        configs = data.get("smtpConfigurations", [])
+
+        if not configs:
+            return {"configured": False, "enabled": False, "host": None, "id": None}
+
+        smtp = configs[0]
+        host = smtp.get("host", "")
+        is_enabled = "disabled" not in host.lower()
+
+        return {
+            "configured": True,
+            "enabled": is_enabled,
+            "host": host,
+            "id": smtp.get("id"),
+            "has_backup": bool(client.smtp_original_host),
+        }
+
+
+@smtp_router.post("/disable")
+async def disable_smtp(
+    client_code: str,
+    db: Session = Depends(get_db),
+):
+    """Disable SMTP by setting host to 'disabled'. Backs up original host."""
+    client = db.query(ClientModel).filter(ClientModel.client_code == client_code).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client '{client_code}' not found")
+
+    token = await _get_folio_token(client)
+
+    async with httpx.AsyncClient(timeout=30.0) as http_client:
+        headers = {
+            "x-okapi-tenant": client.tenant_id,
+            "x-okapi-token": token,
+            "Content-Type": "application/json",
+        }
+
+        # Get current SMTP config
+        response = await http_client.get(
+            f"{client.folio_url}/smtp-configuration", headers=headers
+        )
+        if response.status_code != 200:
+            raise HTTPException(status_code=502, detail="Failed to query SMTP configuration")
+
+        data = response.json()
+        configs = data.get("smtpConfigurations", [])
+        if not configs:
+            raise HTTPException(status_code=404, detail="No SMTP configuration found in FOLIO")
+
+        smtp = configs[0]
+        smtp_id = smtp["id"]
+        current_host = smtp.get("host", "")
+
+        if "disabled" in current_host.lower():
+            return {"status": "already_disabled", "message": "SMTP is already disabled"}
+
+        # Backup original host
+        client.smtp_original_host = current_host
+        db.commit()
+
+        # Update SMTP host to "disabled"
+        smtp["host"] = "disabled"
+        # Remove metadata (FOLIO doesn't accept it in PUT)
+        smtp.pop("metadata", None)
+
+        put_response = await http_client.put(
+            f"{client.folio_url}/smtp-configuration/{smtp_id}",
+            headers=headers,
+            json=smtp,
+        )
+        if put_response.status_code not in (200, 204):
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to update SMTP: HTTP {put_response.status_code}"
+            )
+
+        return {
+            "status": "success",
+            "message": f"SMTP disabled. Original host '{current_host}' backed up.",
+        }
+
+
+@smtp_router.post("/enable")
+async def enable_smtp(
+    client_code: str,
+    db: Session = Depends(get_db),
+):
+    """Restore SMTP by setting host back to the backed-up value."""
+    client = db.query(ClientModel).filter(ClientModel.client_code == client_code).first()
+    if not client:
+        raise HTTPException(status_code=404, detail=f"Client '{client_code}' not found")
+
+    if not client.smtp_original_host:
+        raise HTTPException(
+            status_code=400,
+            detail="No backup host found. SMTP may not have been disabled via this portal."
+        )
+
+    token = await _get_folio_token(client)
+
+    async with httpx.AsyncClient(timeout=30.0) as http_client:
+        headers = {
+            "x-okapi-tenant": client.tenant_id,
+            "x-okapi-token": token,
+            "Content-Type": "application/json",
+        }
+
+        # Get current SMTP config
+        response = await http_client.get(
+            f"{client.folio_url}/smtp-configuration", headers=headers
+        )
+        if response.status_code != 200:
+            raise HTTPException(status_code=502, detail="Failed to query SMTP configuration")
+
+        data = response.json()
+        configs = data.get("smtpConfigurations", [])
+        if not configs:
+            raise HTTPException(status_code=404, detail="No SMTP configuration found in FOLIO")
+
+        smtp = configs[0]
+        smtp_id = smtp["id"]
+
+        # Restore original host
+        smtp["host"] = client.smtp_original_host
+        smtp.pop("metadata", None)
+
+        put_response = await http_client.put(
+            f"{client.folio_url}/smtp-configuration/{smtp_id}",
+            headers=headers,
+            json=smtp,
+        )
+        if put_response.status_code not in (200, 204):
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to restore SMTP: HTTP {put_response.status_code}"
+            )
+
+        restored_host = client.smtp_original_host
+        client.smtp_original_host = None
+        db.commit()
+
+        return {
+            "status": "success",
+            "message": f"SMTP restored to '{restored_host}'.",
+        }
+
+
 def _update_env_file(client_code: str, username: str, password: str):
     """Update the .env file with credentials."""
     client_path = settings.get_client_dir(client_code)

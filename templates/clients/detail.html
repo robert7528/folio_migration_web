@@ -137,6 +137,17 @@
 
             <div id="credentials-result" class="mt-2" style="display: none;"></div>
         </div>
+
+        <!-- SMTP Configuration -->
+        <div class="card mt-2">
+            <div class="card-header">
+                <span class="card-title">SMTP Notifications</span>
+                <span id="smtp-status-badge" class="badge" style="display: none;"></span>
+            </div>
+            <div id="smtp-content">
+                <p class="text-muted">Loading SMTP status...</p>
+            </div>
+        </div>
     </div>
 
     <!-- Tasks Tab -->
@@ -352,6 +363,83 @@ async function loadCredentials() {
         }
     } catch (error) {
         console.error('Error loading credentials:', error);
+    }
+
+    // Load SMTP status after credentials
+    await loadSmtpStatus();
+}
+
+async function loadSmtpStatus() {
+    const content = document.getElementById('smtp-content');
+    const badge = document.getElementById('smtp-status-badge');
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/smtp`);
+        if (!response.ok) {
+            content.innerHTML = '<p class="text-muted">Unable to check SMTP status (credentials may not be set)</p>';
+            return;
+        }
+        const data = await response.json();
+
+        if (!data.configured) {
+            content.innerHTML = '<p class="text-muted">No SMTP configuration found in FOLIO</p>';
+            badge.style.display = 'none';
+            return;
+        }
+
+        badge.textContent = data.enabled ? 'Enabled' : 'Disabled';
+        badge.className = data.enabled ? 'badge badge-success' : 'badge badge-warning';
+        badge.style.display = 'inline-block';
+
+        const hostInfo = data.host ? ` (${data.host})` : '';
+        content.innerHTML = `
+            <div class="flex-between" style="align-items: center;">
+                <div>
+                    <p style="margin: 0;">
+                        Email notifications are <strong>${data.enabled ? 'enabled' : 'disabled'}</strong>${data.enabled ? hostInfo : ''}
+                    </p>
+                    <small class="text-muted">Disable SMTP before running loan migrations to prevent sending checkout notices to patrons.</small>
+                </div>
+                <button class="btn ${data.enabled ? 'btn-warning' : 'btn-success'} btn-sm"
+                    onclick="toggleSmtp(${data.enabled})" id="smtp-toggle-btn">
+                    ${data.enabled ? 'Disable SMTP' : 'Enable SMTP'}
+                </button>
+            </div>
+        `;
+    } catch (error) {
+        content.innerHTML = '<p class="text-muted">Unable to check SMTP status</p>';
+    }
+}
+
+async function toggleSmtp(currentlyEnabled) {
+    const btn = document.getElementById('smtp-toggle-btn');
+    const action = currentlyEnabled ? 'disable' : 'enable';
+    const confirmMsg = currentlyEnabled
+        ? 'Disable SMTP? FOLIO will stop sending email notifications.'
+        : 'Enable SMTP? FOLIO will resume sending email notifications.';
+
+    if (!confirm(confirmMsg)) return;
+
+    btn.disabled = true;
+    btn.textContent = currentlyEnabled ? 'Disabling...' : 'Enabling...';
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/smtp/${action}`, {
+            method: 'POST',
+        });
+        const result = await response.json();
+
+        if (response.ok) {
+            Notify.success(result.message);
+            await loadSmtpStatus();
+        } else {
+            Notify.error(result.detail || 'Operation failed');
+            btn.disabled = false;
+            btn.textContent = currentlyEnabled ? 'Disable SMTP' : 'Enable SMTP';
+        }
+    } catch (error) {
+        Notify.error(error.message);
+        btn.disabled = false;
+        btn.textContent = currentlyEnabled ? 'Disable SMTP' : 'Enable SMTP';
     }
 }
 
