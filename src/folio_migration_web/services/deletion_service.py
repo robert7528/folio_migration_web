@@ -165,71 +165,50 @@ class FolioDeletionClient(FolioApiClient):
         except Exception as e:
             return {"status": "failed", "user_id": user_id, "error": str(e)}
 
-    async def delete_loan_by_item_barcode(self, item_barcode: str) -> Dict[str, Any]:
-        """Delete an open loan by looking up the item barcode in FOLIO."""
+    async def checkin_loan_by_barcode(self, item_barcode: str, service_point_id: str) -> Dict[str, Any]:
+        """Check in (return) a loan by item barcode via FOLIO circulation API.
+
+        Uses /circulation/check-in-by-barcode which properly closes the loan,
+        restores item status to Available, and creates circulation audit log.
+        """
+        if not service_point_id:
+            return {
+                "status": "failed",
+                "id": item_barcode,
+                "error": "No service_point_id available for checkin"
+            }
+
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                # Step 1: Look up item UUID from barcode
-                item_url = f"{self.folio_url}/item-storage/items"
-                item_params = {"query": f'barcode=="{item_barcode}"', "limit": 1}
-                item_response = await client.get(item_url, headers=self.headers, params=item_params)
+                url = f"{self.folio_url}/circulation/check-in-by-barcode"
+                check_in_date = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000+00:00")
+                payload = {
+                    "itemBarcode": item_barcode,
+                    "servicePointId": service_point_id,
+                    "checkInDate": check_in_date,
+                }
+                response = await client.post(url, json=payload, headers=self.headers)
 
-                if item_response.status_code != 200:
-                    return {
-                        "status": "failed",
-                        "id": item_barcode,
-                        "error": f"Item query failed: HTTP {item_response.status_code}"
-                    }
-
-                items = item_response.json().get("items", [])
-                if not items:
-                    return {
-                        "status": "not_found",
-                        "id": item_barcode,
-                        "error": f"No item found for barcode {item_barcode}"
-                    }
-
-                item_id = items[0]["id"]
-
-                # Step 2: Query for open loans by itemId
-                url = f"{self.folio_url}/loan-storage/loans"
-                query = f'(itemId=="{item_id}" and status.name==Open)'
-                params = {"query": query, "limit": 1}
-                response = await client.get(url, headers=self.headers, params=params)
-
-                if response.status_code != 200:
-                    return {
-                        "status": "failed",
-                        "id": item_barcode,
-                        "error": f"Loan query failed: HTTP {response.status_code}"
-                    }
-
-                data = response.json()
-                loans = data.get("loans", [])
-                if not loans:
-                    return {
-                        "status": "not_found",
-                        "id": item_barcode,
-                        "error": f"No open loan found for item {item_barcode}"
-                    }
-
-                loan_id = loans[0]["id"]
-                delete_url = f"{self.folio_url}/loan-storage/loans/{loan_id}"
-                del_response = await client.delete(delete_url, headers=self.headers)
-
-                if del_response.status_code == 204:
+                if response.status_code == 200:
                     return {"status": "deleted", "id": item_barcode}
-                elif del_response.status_code == 404:
+                elif response.status_code == 422:
+                    # 422 usually means item not found or no open loan
+                    error_msg = response.text
+                    try:
+                        error_data = response.json()
+                        error_msg = error_data.get("message", response.text)
+                    except Exception:
+                        pass
                     return {
                         "status": "not_found",
                         "id": item_barcode,
-                        "error": f"Loan {loan_id} not found"
+                        "error": f"Checkin failed (422): {error_msg}"
                     }
                 else:
                     return {
                         "status": "failed",
                         "id": item_barcode,
-                        "error": f"HTTP {del_response.status_code}: {del_response.text}"
+                        "error": f"HTTP {response.status_code}: {response.text}"
                     }
         except Exception as e:
             return {"status": "failed", "id": item_barcode, "error": str(e)}
@@ -305,6 +284,7 @@ class DeletionService:
         """Initialize with client path and database session."""
         self.client_path = client_path
         self.db = db
+        self._fallback_service_point_id = ""
 
     async def delete_execution_records(
         self,
@@ -335,6 +315,10 @@ class DeletionService:
         records = self._load_records(output_file, record_type)
         # Filter records that have an id field
         records_with_id = [r for r in records if r.get("id")]
+
+        # For loans, load fallback service point from migration config
+        if record_type == RecordType.LOANS:
+            self._fallback_service_point_id = self._get_fallback_service_point(execution)
 
         # Create summary
         summary = DeletionSummary(
@@ -452,9 +436,12 @@ class DeletionService:
             return await folio_client.delete_user(record_id, external_system_id)
 
         elif record_type == RecordType.LOANS:
-            # For loans, record_id is actually the item_barcode
+            # For loans, use checkin API instead of direct deletion
             item_barcode = local_record.get("item_barcode", record_id) if local_record else record_id
-            return await folio_client.delete_loan_by_item_barcode(item_barcode)
+            service_point_id = local_record.get("service_point_id", "") if local_record else ""
+            if not service_point_id:
+                service_point_id = self._fallback_service_point_id or ""
+            return await folio_client.checkin_loan_by_barcode(item_barcode, service_point_id)
 
         return {"status": "skipped", "error": f"Unsupported record type: {record_type}"}
 
@@ -539,7 +526,7 @@ class DeletionService:
 
     def _load_records(self, file_path: Path, record_type: RecordType) -> List[Dict]:
         """Load records from local JSON or TSV file."""
-        # For loans, read TSV file with item_barcode as the identifier
+        # For loans, read TSV file with item_barcode and service_point_id
         if record_type == RecordType.LOANS:
             import csv
             records = []
@@ -548,7 +535,11 @@ class DeletionService:
                 for row in reader:
                     barcode = row.get("item_barcode", "").strip()
                     if barcode:
-                        records.append({"id": barcode, "item_barcode": barcode})
+                        records.append({
+                            "id": barcode,
+                            "item_barcode": barcode,
+                            "service_point_id": row.get("service_point_id", "").strip(),
+                        })
             return records
 
         content = file_path.read_text(encoding="utf-8")
@@ -579,6 +570,22 @@ class DeletionService:
                 pass
 
         return records
+
+    def _get_fallback_service_point(self, execution: Execution) -> str:
+        """Get fallback service point ID from migration config for loans."""
+        try:
+            iteration_path = self.client_path / "iterations" / execution.iteration
+            config_path = iteration_path / "mapping_files" / "migration_config.json"
+            if not config_path.exists():
+                return ""
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            # Look through tasks for LoansMigrator with fallbackServicePointId
+            for task in config.get("tasks", []):
+                if task.get("migrationTaskType") == "LoansMigrator":
+                    return task.get("fallbackServicePointId", "")
+            return ""
+        except Exception:
+            return ""
 
     def preview_deletion(
         self,
