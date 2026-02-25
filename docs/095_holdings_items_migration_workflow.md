@@ -1048,18 +1048,9 @@ grep -i failed logs/*.log
 ### 驗證 FOLIO 資料
 
 ```bash
-# 設定變數（或從 .env 載入）
-# export FOLIO_URL="https://okapi.example.com"
-# export FOLIO_TENANT="your_tenant_id"
-# export FOLIO_USER="admin_user"
-# export FOLIO_PASSWORD="..."
-
-# 取得 FOLIO token
-export FOLIO_TOKEN=$(curl -s -X POST "${FOLIO_URL}/authn/login" \
-  -H "Content-Type: application/json" \
-  -H "x-okapi-tenant: ${FOLIO_TENANT}" \
-  -d "{\"username\":\"${FOLIO_USER}\",\"password\":\"${FOLIO_PASSWORD}\"}" \
-  -D - 2>/dev/null | grep -i "x-okapi-token" | tr -d '\r' | awk '{print $2}')
+# 載入 FOLIO 環境變數（含自動取得 token）
+# 範本: tools/folio_env.sh.example，複製後填入實際值
+source tools/folio_env_<client>.sh
 
 # 查詢 Instances 數量
 curl -s -X GET "$FOLIO_URL/instance-storage/instances?limit=0" \

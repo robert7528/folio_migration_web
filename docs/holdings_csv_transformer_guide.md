@@ -371,12 +371,9 @@ Web Portal 提供內建的 FOLIO Reference Data 查詢功能，無需手動呼�
 若需直接查詢 FOLIO API：
 
 ```bash
-# 取得 FOLIO token
-export FOLIO_TOKEN=$(curl -s -X POST "${FOLIO_URL}/authn/login" \
-  -H "Content-Type: application/json" \
-  -H "x-okapi-tenant: ${FOLIO_TENANT}" \
-  -d "{\"username\":\"${FOLIO_USER}\",\"password\":\"${FOLIO_PASSWORD}\"}" \
-  -D - 2>/dev/null | grep -i "x-okapi-token" | tr -d '\r' | awk '{print $2}')
+# 載入 FOLIO 環境變數（含自動取得 token）
+# 範本: tools/folio_env.sh.example，複製後填入實際值
+source tools/folio_env_<client>.sh
 
 # 查詢 Holdings Types
 curl -s "${FOLIO_URL}/holdings-types?limit=100" \
