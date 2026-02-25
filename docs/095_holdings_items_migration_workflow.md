@@ -1048,35 +1048,43 @@ grep -i failed logs/*.log
 ### 驗證 FOLIO 資料
 
 ```bash
-# 設定變數
-FOLIO_URL="https://api-xxx.folio.ebsco.com"
-TENANT="your_tenant"
-TOKEN="your_token"
+# 設定變數（或從 .env 載入）
+# export FOLIO_URL="https://okapi.example.com"
+# export FOLIO_TENANT="your_tenant_id"
+# export FOLIO_USER="admin_user"
+# export FOLIO_PASSWORD="..."
+
+# 取得 FOLIO token
+export FOLIO_TOKEN=$(curl -s -X POST "${FOLIO_URL}/authn/login" \
+  -H "Content-Type: application/json" \
+  -H "x-okapi-tenant: ${FOLIO_TENANT}" \
+  -d "{\"username\":\"${FOLIO_USER}\",\"password\":\"${FOLIO_PASSWORD}\"}" \
+  -D - 2>/dev/null | grep -i "x-okapi-token" | tr -d '\r' | awk '{print $2}')
 
 # 查詢 Instances 數量
 curl -s -X GET "$FOLIO_URL/instance-storage/instances?limit=0" \
-  -H "X-Okapi-Tenant: $TENANT" \
-  -H "X-Okapi-Token: $TOKEN" | jq '.totalRecords'
+  -H "X-Okapi-Tenant: $FOLIO_TENANT" \
+  -H "X-Okapi-Token: $FOLIO_TOKEN" | jq '.totalRecords'
 
 # 查詢 Holdings 數量
 curl -s -X GET "$FOLIO_URL/holdings-storage/holdings?limit=0" \
-  -H "X-Okapi-Tenant: $TENANT" \
-  -H "X-Okapi-Token: $TOKEN" | jq '.totalRecords'
+  -H "X-Okapi-Tenant: $FOLIO_TENANT" \
+  -H "X-Okapi-Token: $FOLIO_TOKEN" | jq '.totalRecords'
 
 # 查詢 Items 數量
 curl -s -X GET "$FOLIO_URL/item-storage/items?limit=0" \
-  -H "X-Okapi-Tenant: $TENANT" \
-  -H "X-Okapi-Token: $TOKEN" | jq '.totalRecords'
+  -H "X-Okapi-Tenant: $FOLIO_TENANT" \
+  -H "X-Okapi-Token: $FOLIO_TOKEN" | jq '.totalRecords'
 
 # 查詢特定 Instance 的 Holdings
 curl -s -X GET "$FOLIO_URL/holdings-storage/holdings?query=instanceId==$INSTANCE_UUID" \
-  -H "X-Okapi-Tenant: $TENANT" \
-  -H "X-Okapi-Token: $TOKEN" | jq '.holdingsRecords'
+  -H "X-Okapi-Tenant: $FOLIO_TENANT" \
+  -H "X-Okapi-Token: $FOLIO_TOKEN" | jq '.holdingsRecords'
 
 # 查詢特定 Holdings 的 Items
 curl -s -X GET "$FOLIO_URL/item-storage/items?query=holdingsRecordId==$HOLDINGS_UUID" \
-  -H "X-Okapi-Tenant: $TENANT" \
-  -H "X-Okapi-Token: $TOKEN" | jq '.items'
+  -H "X-Okapi-Tenant: $FOLIO_TENANT" \
+  -H "X-Okapi-Token: $FOLIO_TOKEN" | jq '.items'
 ```
 
 ### 常見問題

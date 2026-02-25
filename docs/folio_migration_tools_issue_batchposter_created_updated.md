@@ -184,9 +184,9 @@ Currently, operators can manually query FOLIO before and after migration to dete
 
 ```bash
 # Before migration
-curl -X GET "$OKAPI_URL/holdings-storage/holdings?limit=0" \
-  -H "x-okapi-tenant: $TENANT" \
-  -H "x-okapi-token: $TOKEN" | jq '.totalRecords'
+curl -X GET "$FOLIO_URL/holdings-storage/holdings?limit=0" \
+  -H "x-okapi-tenant: $FOLIO_TENANT" \
+  -H "x-okapi-token: $FOLIO_TOKEN" | jq '.totalRecords'
 
 # After migration
 # Run the same query and compare counts

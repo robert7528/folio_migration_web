@@ -228,8 +228,8 @@ Loaded and validated 27 loans in total
 ```bash
 # 查詢 open loans
 curl -s "${FOLIO_URL}/circulation/loans?query=status.name==Open&limit=100" \
-  -H "x-okapi-tenant: ${TENANT}" \
-  -H "x-okapi-token: ${TOKEN}" | jq '.totalRecords'
+  -H "x-okapi-tenant: ${FOLIO_TENANT}" \
+  -H "x-okapi-token: ${FOLIO_TOKEN}" | jq '.totalRecords'
 ```
 
 ### 2. 確認 item status
@@ -238,8 +238,8 @@ curl -s "${FOLIO_URL}/circulation/loans?query=status.name==Open&limit=100" \
 
 ```bash
 curl -s "${FOLIO_URL}/item-storage/items?query=barcode==C723018" \
-  -H "x-okapi-tenant: ${TENANT}" \
-  -H "x-okapi-token: ${TOKEN}" | jq '.items[0].status.name'
+  -H "x-okapi-tenant: ${FOLIO_TENANT}" \
+  -H "x-okapi-token: ${FOLIO_TOKEN}" | jq '.items[0].status.name'
 # "Checked out"
 ```
 

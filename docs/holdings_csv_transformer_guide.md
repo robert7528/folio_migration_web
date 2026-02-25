@@ -371,29 +371,29 @@ Web Portal 提供內建的 FOLIO Reference Data 查詢功能，無需手動呼�
 若需直接查詢 FOLIO API：
 
 ```bash
-# 先取得 Token
-TOKEN=$(curl -s -X POST "${OKAPI_URL}/authn/login" \
+# 取得 FOLIO token
+export FOLIO_TOKEN=$(curl -s -X POST "${FOLIO_URL}/authn/login" \
   -H "Content-Type: application/json" \
-  -H "x-okapi-tenant: ${TENANT_ID}" \
-  -d '{"username":"'${USERNAME}'","password":"'${PASSWORD}'"}' \
-  | jq -r '.okapiToken')
+  -H "x-okapi-tenant: ${FOLIO_TENANT}" \
+  -d "{\"username\":\"${FOLIO_USER}\",\"password\":\"${FOLIO_PASSWORD}\"}" \
+  -D - 2>/dev/null | grep -i "x-okapi-token" | tr -d '\r' | awk '{print $2}')
 
 # 查詢 Holdings Types
-curl -s "${OKAPI_URL}/holdings-types?limit=100" \
-  -H "x-okapi-tenant: ${TENANT_ID}" \
-  -H "x-okapi-token: ${TOKEN}" \
+curl -s "${FOLIO_URL}/holdings-types?limit=100" \
+  -H "x-okapi-tenant: ${FOLIO_TENANT}" \
+  -H "x-okapi-token: ${FOLIO_TOKEN}" \
   | jq '.holdingsTypes[] | {id, name}'
 
 # 查詢 Locations
-curl -s "${OKAPI_URL}/locations?limit=1000" \
-  -H "x-okapi-tenant: ${TENANT_ID}" \
-  -H "x-okapi-token: ${TOKEN}" \
+curl -s "${FOLIO_URL}/locations?limit=1000" \
+  -H "x-okapi-tenant: ${FOLIO_TENANT}" \
+  -H "x-okapi-token: ${FOLIO_TOKEN}" \
   | jq '.locations[] | {id, name, code}'
 
 # 查詢 Call Number Types
-curl -s "${OKAPI_URL}/call-number-types?limit=100" \
-  -H "x-okapi-tenant: ${TENANT_ID}" \
-  -H "x-okapi-token: ${TOKEN}" \
+curl -s "${FOLIO_URL}/call-number-types?limit=100" \
+  -H "x-okapi-tenant: ${FOLIO_TENANT}" \
+  -H "x-okapi-token: ${FOLIO_TOKEN}" \
   | jq '.callNumberTypes[] | {id, name}'
 ```
 

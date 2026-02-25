@@ -504,12 +504,12 @@ Request preference for specified user already exists
 > - Web Portal：`POST /api/clients/{client_code}/deletion/cleanup-request-preferences`
 > - 或 API 批次刪除：
 >   ```bash
->   curl -s "{OKAPI_URL}/request-preference-storage/request-preference?limit=200" \
->     -H 'x-okapi-tenant: {TENANT}' -H "x-okapi-token: $TOKEN" \
+>   curl -s "${FOLIO_URL}/request-preference-storage/request-preference?limit=200" \
+>     -H "x-okapi-tenant: ${FOLIO_TENANT}" -H "x-okapi-token: $FOLIO_TOKEN" \
 >     | jq -r '.requestPreferences[].id' > /tmp/rp_ids.txt
 >   while read id; do
->     curl -s -X DELETE "{OKAPI_URL}/request-preference-storage/request-preference/$id" \
->       -H 'x-okapi-tenant: {TENANT}' -H "x-okapi-token: $TOKEN"
+>     curl -s -X DELETE "${FOLIO_URL}/request-preference-storage/request-preference/$id" \
+>       -H "x-okapi-tenant: ${FOLIO_TENANT}" -H "x-okapi-token: $FOLIO_TOKEN"
 >   done < /tmp/rp_ids.txt
 >   ```
 

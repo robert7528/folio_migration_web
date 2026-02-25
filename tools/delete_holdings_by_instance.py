@@ -9,7 +9,7 @@ batch deletion cannot handle.
 Usage:
     export FOLIO_URL="https://okapi.example.com"
     export FOLIO_TENANT="your_tenant_id"
-    export FOLIO_USER="admin"
+    export FOLIO_USER="admin_user"
     export FOLIO_PASSWORD="password"
 
     python delete_holdings_by_instance.py instance_ids.txt

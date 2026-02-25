@@ -123,7 +123,7 @@ self.create_source_records = all(
 ```bash
 curl -s "https://okapi.example.com/subject-sources?limit=100" \
   -H "x-okapi-tenant: your_tenant_id" \
-  -H "x-okapi-token: $TOKEN" | jq '.subjectSources[] | {name, code}'
+  -H "x-okapi-token: $FOLIO_TOKEN" | jq '.subjectSources[] | {name, code}'
 ```
 
 輸出：
@@ -139,7 +139,7 @@ curl -s "https://okapi.example.com/subject-sources?limit=100" \
 ```bash
 curl -s "https://okapi.example.com/mapping-rules/marc-bib" \
   -H "x-okapi-tenant: your_tenant_id" \
-  -H "x-okapi-token: $TOKEN" | jq '.["650"]'
+  -H "x-okapi-token: $FOLIO_TOKEN" | jq '.["650"]'
 ```
 
 650 欄位的 mapping rules 包含針對 `ind2=0` 的設定：

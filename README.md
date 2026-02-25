@@ -72,8 +72,7 @@ folio_migration_web/
 ├── tools/                # Migration utility scripts
 │   ├── extract_095_standard.py      # Extract Holdings/Items from MARC 095
 │   ├── delete_holdings_by_instance.py  # Delete Holdings/Items from FOLIO
-│   ├── folio_task_analyzer.py       # Analyze migration task configs
-│   └── get_thu_env.sh               # THU FOLIO environment setup
+│   └── folio_task_analyzer.py       # Analyze migration task configs
 └── config/               # Client mapping files (version controlled)
     └── thu/mapping_files/  # THU locations, material types, etc.
 ```
