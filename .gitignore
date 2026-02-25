@@ -3,6 +3,7 @@
 .env.local
 .env.production
 .folio_migration/
+tools/folio_env_*.sh
 
 # Python
 __pycache__/
