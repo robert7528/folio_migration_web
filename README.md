@@ -41,6 +41,21 @@ nano .env
 uvicorn folio_migration_web.main:app --reload
 ```
 
+## CLI Tools
+
+CLI tools (in `tools/`) require FOLIO connection environment variables.
+
+```bash
+# Copy template and fill in credentials
+cp tools/folio_env.sh.example tools/folio_env_thu.sh
+nano tools/folio_env_thu.sh
+
+# Load before using CLI tools
+source tools/folio_env_thu.sh
+```
+
+> `tools/folio_env_*.sh` is gitignored — credentials won't be committed.
+
 ## Deployment
 
 See `deployment/` directory for:
