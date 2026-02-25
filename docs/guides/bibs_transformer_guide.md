@@ -374,7 +374,7 @@ source_data/
 
 ## 9. 已知問題與限制
 
-> 詳細的問題分析與原始碼追蹤，請參閱 [folio_migration_tools_issues.md](folio_migration_tools_issues.md)。
+> 詳細的問題分析與原始碼追蹤，請參閱 [folio_migration_tools_issues.md](../issues/folio_migration_tools_issues.md)。
 
 ### 9.1 `createSourceRecords` 與 `dataImportMarc` 互斥
 

@@ -130,7 +130,7 @@ process = subprocess.Popen(
 |-----------|------|---------|
 | `SRS` | v1.10.2 已移除 | 使用 FOLIO Data Import UI 匯入 `.mrc` 檔案 |
 
-> 詳細說明請參閱 [folio_migration_tools_issues.md](folio_migration_tools_issues.md) 問題三。
+> 詳細說明請參閱 [folio_migration_tools_issues.md](../issues/folio_migration_tools_issues.md) 問題三。
 
 ---
 
@@ -418,7 +418,7 @@ ERROR Wrong type. Only one of Extradata, Items, Holdings, Instances, ShadowInsta
 
 folio_migration_tools 1.10.2 已從 BatchPoster 移除 `objectType: "SRS"` 的支援。SRS/MARC 記錄需透過 FOLIO Data Import UI 手動匯入 `.mrc` 檔案。
 
-> 詳見 [folio_migration_tools_issues.md](folio_migration_tools_issues.md) 問題三。
+> 詳見 [folio_migration_tools_issues.md](../issues/folio_migration_tools_issues.md) 問題三。
 
 ### 9.2 User 刪除後重新匯入失敗
 
@@ -519,7 +519,7 @@ Request preference for specified user already exists
 
 BatchPoster 對 Users 物件會回報 `created` 和 `updated` 的數量，但對 Holdings、Items、Instances 僅回報成功/失敗數，無法區分新建或更新。
 
-> 詳見 [folio_migration_tools_issue_batchposter_created_updated.md](folio_migration_tools_issue_batchposter_created_updated.md)。
+> 詳見 [folio_migration_tools_issue_batchposter_created_updated.md](../issues/folio_migration_tools_issue_batchposter_created_updated.md)。
 
 ---
 
@@ -585,6 +585,6 @@ BatchPoster 對 Users 物件會回報 `created` 和 `updated` 的數量，但對
 |------|------|
 | [bibs_transformer_guide.md](bibs_transformer_guide.md) | BibsTransformer 操作指南 |
 | [holdings_items_migration_guide.md](holdings_items_migration_guide.md) | Holdings/Items 遷移指南 |
-| [task-config-parameters.md](task-config-parameters.md) | 所有任務類型的完整參數文件 |
-| [folio_migration_tools_issues.md](folio_migration_tools_issues.md) | 已知問題報告 |
-| [folio_migration_tools_issue_batchposter_created_updated.md](folio_migration_tools_issue_batchposter_created_updated.md) | BatchPoster created/updated 計數問題 |
+| [task-config-parameters.md](../analysis/task-config-parameters.md) | 所有任務類型的完整參數文件 |
+| [folio_migration_tools_issues.md](../issues/folio_migration_tools_issues.md) | 已知問題報告 |
+| [folio_migration_tools_issue_batchposter_created_updated.md](../issues/folio_migration_tools_issue_batchposter_created_updated.md) | BatchPoster created/updated 計數問題 |

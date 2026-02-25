@@ -845,7 +845,7 @@ ItemsTransformer 會自動處理重複條碼：當偵測到條碼已存在時，
 | [bibs_transformer_guide.md](bibs_transformer_guide.md) | Instance 轉檔（最前置步驟） |
 | [095_holdings_items_migration_workflow.md](095_holdings_items_migration_workflow.md) | 095 欄位提取完整流程 |
 | [holdings_items_migration_guide.md](holdings_items_migration_guide.md) | 完整 Holdings/Items 遷移概覽 |
-| [task-config-parameters.md](task-config-parameters.md) | 所有任務類型的參數參考 |
+| [task-config-parameters.md](../analysis/task-config-parameters.md) | 所有任務類型的參數參考 |
 
 ---
 

@@ -581,7 +581,7 @@ bib_id	location	call_number	call_number_type
 cp source_data/holdings/holdings_from_095.tsv source_data/items/
 ```
 
-> 詳細分析請參閱 [folio_migration_tools_issue_holdings_csv_path.md](folio_migration_tools_issue_holdings_csv_path.md)。
+> 詳細分析請參閱 [folio_migration_tools_issue_holdings_csv_path.md](../issues/folio_migration_tools_issue_holdings_csv_path.md)。
 
 ### 10.2 Instance 必須先存在
 
@@ -680,8 +680,8 @@ KeyError: 'location'
 | [holdings_items_migration_guide.md](holdings_items_migration_guide.md) | 完整 Holdings/Items 遷移概覽 |
 | [095_holdings_items_migration_workflow.md](095_holdings_items_migration_workflow.md) | 095 欄位提取詳細流程 |
 | [bibs_transformer_guide.md](bibs_transformer_guide.md) | 前置步驟 — Instances 轉檔 |
-| [folio_migration_tools_issue_holdings_csv_path.md](folio_migration_tools_issue_holdings_csv_path.md) | 檔案路徑 Bug 詳細記錄 |
-| [task-config-parameters.md](task-config-parameters.md) | 所有任務類型的參數參考 |
+| [folio_migration_tools_issue_holdings_csv_path.md](../issues/folio_migration_tools_issue_holdings_csv_path.md) | 檔案路徑 Bug 詳細記錄 |
+| [task-config-parameters.md](../analysis/task-config-parameters.md) | 所有任務類型的參數參考 |
 
 ---
 
