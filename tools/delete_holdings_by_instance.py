@@ -7,8 +7,8 @@ Use this to clean up Holdings that were NOT created by the migration tool
 batch deletion cannot handle.
 
 Usage:
-    export FOLIO_URL="https://api-thu.folio.ebsco.com"
-    export FOLIO_TENANT="fs00001280"
+    export FOLIO_URL="https://okapi.example.com"
+    export FOLIO_TENANT="your_tenant_id"
     export FOLIO_USER="admin"
     export FOLIO_PASSWORD="password"
 

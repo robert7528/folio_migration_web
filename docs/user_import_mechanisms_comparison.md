@@ -234,8 +234,8 @@ async def process_line(self, user: str, line_number: int):
 ```json
 {
   "libraryInformation": {
-    "tenantId": "fs00001280",
-    "okapiUrl": "https://api-thu.folio.ebsco.com",
+    "tenantId": "your_tenant_id",
+    "okapiUrl": "https://okapi.example.com",
     "okapiUsername": "EBSCOAdmin",
     "libraryName": "thu",
     "folioRelease": "sunflower"
@@ -320,7 +320,7 @@ C1	C1
 ```bash
 python -m folio_data_import.UserImport \
   --gateway-url "https://api.folio.example.com" \
-  --tenant-id "fs00001280" \
+  --tenant-id "your_tenant_id" \
   --username "admin" \
   --password "<your_password>" \
   --library-name "thu" \
@@ -350,7 +350,7 @@ python -m folio_data_import.UserImport \
 
 ```bash
 export FOLIO_GATEWAY_URL="https://api.folio.example.com"
-export FOLIO_TENANT_ID="fs00001280"
+export FOLIO_TENANT_ID="your_tenant_id"
 export FOLIO_USERNAME="admin"
 export FOLIO_PASSWORD="<your_password>"
 export FOLIO_LIBRARY_NAME="thu"

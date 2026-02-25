@@ -761,8 +761,8 @@ W228136	00301889	00301889-LB4F-BOOK_658.4_S123_2001	W228136	LB4F	BOOK		658.4 S12
 ```json
 {
   "libraryInformation": {
-    "tenantId": "fs00001280",
-    "okapiUrl": "https://api-thu.folio.ebsco.com",
+    "tenantId": "your_tenant_id",
+    "okapiUrl": "https://okapi.example.com",
     "okapiUsername": "EBSCOAdmin",
     "libraryName": "thu",
     "logLevelDebug": false,

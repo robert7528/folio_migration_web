@@ -28,8 +28,8 @@
 
 | 欄位 | 類型 | 說明 | 範例 |
 |------|------|------|------|
-| `tenantId` | string | FOLIO 租戶 ID | `"fs00001280"` |
-| `okapiUrl` / `gatewayUrl` | string | FOLIO API 閘道 URL | `"https://api-thu.folio.ebsco.com"` |
+| `tenantId` | string | FOLIO 租戶 ID | `"your_tenant_id"` |
+| `okapiUrl` / `gatewayUrl` | string | FOLIO API 閘道 URL | `"https://okapi.example.com"` |
 | `okapiUsername` / `folioUsername` | string | API 登入帳號 | `"EBSCOAdmin"` |
 | `folioRelease` | enum | FOLIO 版本 | `"sunflower"`, `"orchid"`, `"trillium"` |
 | `iterationIdentifier` | string | 迭代目錄名稱 | `"current"`, `"test_run"` |

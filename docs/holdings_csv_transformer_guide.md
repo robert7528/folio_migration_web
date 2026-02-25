@@ -85,8 +85,8 @@ process = subprocess.Popen(
 ```json
 {
   "libraryInformation": {
-    "tenantId": "fs00001280",
-    "okapiUrl": "https://api-thu.folio.ebsco.com",
+    "tenantId": "your_tenant_id",
+    "okapiUrl": "https://okapi.example.com",
     "okapiUsername": "EBSCOAdmin",
     "libraryName": "thu",
     "logLevelDebug": false,

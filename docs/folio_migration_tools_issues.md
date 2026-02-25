@@ -6,8 +6,8 @@
 |------|-----|
 | folio_migration_tools 版本 | 1.10.2 |
 | FOLIO Release | Sunflower |
-| Tenant ID | fs00001280 |
-| OKAPI URL | https://api-thu.folio.ebsco.com |
+| Tenant ID | your_tenant_id |
+| OKAPI URL | https://okapi.example.com |
 
 ---
 
@@ -121,8 +121,8 @@ self.create_source_records = all(
 **Subject Sources 存在：**
 
 ```bash
-curl -s "https://api-thu.folio.ebsco.com/subject-sources?limit=100" \
-  -H "x-okapi-tenant: fs00001280" \
+curl -s "https://okapi.example.com/subject-sources?limit=100" \
+  -H "x-okapi-tenant: your_tenant_id" \
   -H "x-okapi-token: $TOKEN" | jq '.subjectSources[] | {name, code}'
 ```
 
@@ -137,8 +137,8 @@ curl -s "https://api-thu.folio.ebsco.com/subject-sources?limit=100" \
 **Mapping Rules 正確配置：**
 
 ```bash
-curl -s "https://api-thu.folio.ebsco.com/mapping-rules/marc-bib" \
-  -H "x-okapi-tenant: fs00001280" \
+curl -s "https://okapi.example.com/mapping-rules/marc-bib" \
+  -H "x-okapi-tenant: your_tenant_id" \
   -H "x-okapi-token: $TOKEN" | jq '.["650"]'
 ```
 
@@ -313,8 +313,8 @@ BatchPoster 在版本 1.10.2 中不再支援 `objectType: "SRS"`。
    ```json
    {
        "libraryInformation": {
-           "tenantId": "fs00001280",
-           "okapiUrl": "https://api-thu.folio.ebsco.com",
+           "tenantId": "your_tenant_id",
+           "okapiUrl": "https://okapi.example.com",
            ...
        },
        "migrationTasks": [

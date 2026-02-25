@@ -9,9 +9,9 @@
 # Or with password on command line (non-interactive):
 #   FOLIO_PASSWORD="xxx" source tools/get_thu_env.sh
 
-export FOLIO_URL="https://api-thu.folio.ebsco.com"
-export FOLIO_TENANT="fs00001280"
-FOLIO_USER="HyWebFOLIO"
+export FOLIO_URL="https://okapi.example.com"
+export FOLIO_TENANT="your_tenant_id"
+FOLIO_USER="admin_user"
 
 # Get password if not already set
 if [ -z "$FOLIO_PASSWORD" ]; then
