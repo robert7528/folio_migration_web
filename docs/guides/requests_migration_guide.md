@@ -248,9 +248,10 @@ RequestsMigrator 會：
 
 ## 九、驗證
 
-### 1. 確認 request 已建立
+### 1. 確認 request 總數
 
 ```bash
+# 查詢所有 open requests 的數量
 curl -s "${FOLIO_URL}/circulation/requests?query=status==Open*&limit=0" \
   -H "x-okapi-tenant: ${FOLIO_TENANT}" \
   -H "x-okapi-token: ${FOLIO_TOKEN}" | jq '.totalRecords'
@@ -259,14 +260,79 @@ curl -s "${FOLIO_URL}/circulation/requests?query=status==Open*&limit=0" \
 ### 2. 查詢特定 item 的預約
 
 ```bash
-curl -s "${FOLIO_URL}/circulation/requests?query=item.barcode==C719476" \
+# 依 item barcode 查詢預約
+curl -s "${FOLIO_URL}/circulation/requests?query=item.barcode==C720701" \
   -H "x-okapi-tenant: ${FOLIO_TENANT}" \
-  -H "x-okapi-token: ${FOLIO_TOKEN}" | jq '.requests[] | {requestType, status, requestDate}'
+  -H "x-okapi-token: ${FOLIO_TOKEN}" | jq '.requests[] | {id, requestType, status, requestDate, requester: .requester.barcode}'
 ```
 
-### 3. FOLIO UI 確認
+### 3. 查詢特定 patron 的預約
 
-FOLIO UI → Requests，應可看到遷移的預約記錄。
+```bash
+# 先取得 patron UUID
+PATRON_ID=$(curl -s "${FOLIO_URL}/users?query=barcode==s11930619" \
+  -H "x-okapi-tenant: ${FOLIO_TENANT}" \
+  -H "x-okapi-token: ${FOLIO_TOKEN}" | jq -r '.users[0].id')
+
+# 依 patron UUID 查詢預約
+curl -s "${FOLIO_URL}/circulation/requests?query=requesterId==${PATRON_ID}" \
+  -H "x-okapi-tenant: ${FOLIO_TENANT}" \
+  -H "x-okapi-token: ${FOLIO_TOKEN}" | jq '.requests[] | {id, requestType, status, item: .item.barcode, pickupServicePoint: .pickupServicePoint.name}'
+```
+
+### 4. 確認 item 狀態變更
+
+```bash
+# Page request 成功後，item 狀態應變為 "Paged"
+curl -s "${FOLIO_URL}/item-storage/items?query=barcode==C720701" \
+  -H "x-okapi-tenant: ${FOLIO_TENANT}" \
+  -H "x-okapi-token: ${FOLIO_TOKEN}" | jq '.items[0].status.name'
+# 預期: "Paged"
+```
+
+### 5. 檢查 service point 設定
+
+```bash
+# 列出所有 service points 及其 pickup location 設定
+curl -s "${FOLIO_URL}/service-points?limit=100" \
+  -H "x-okapi-tenant: ${FOLIO_TENANT}" \
+  -H "x-okapi-token: ${FOLIO_TOKEN}" | jq '.servicepoints[] | {id, name, code, pickupLocation}'
+```
+
+### 6. 檢查 request policy 設定
+
+```bash
+# 列出所有 request policies
+curl -s "${FOLIO_URL}/request-policy-storage/request-policies?limit=100" \
+  -H "x-okapi-tenant: ${FOLIO_TENANT}" \
+  -H "x-okapi-token: ${FOLIO_TOKEN}" | jq '.requestPolicies[] | {name, requestTypes}'
+```
+
+### 7. 檢查 circulation rules
+
+```bash
+# 查看目前的 circulation rules（含 request policy 指派）
+curl -s "${FOLIO_URL}/circulation/rules" \
+  -H "x-okapi-tenant: ${FOLIO_TENANT}" \
+  -H "x-okapi-token: ${FOLIO_TOKEN}" | jq '.rulesAsText'
+```
+
+### 8. 刪除特定 request（測試回滾用）
+
+```bash
+# 刪除單筆 request
+curl -s -X DELETE "${FOLIO_URL}/circulation/requests/{request_id}" \
+  -H "x-okapi-tenant: ${FOLIO_TENANT}" \
+  -H "x-okapi-token: ${FOLIO_TOKEN}"
+```
+
+### 9. FOLIO UI 確認
+
+FOLIO UI → Requests，應可看到遷移的預約記錄。確認：
+- Request type（Hold / Page）是否正確
+- Pickup service point 是否正確
+- Request date 和 Expiration date 是否正確
+- Queue position（排隊順序）是否合理
 
 ---
 
