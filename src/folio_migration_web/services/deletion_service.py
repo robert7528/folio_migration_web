@@ -165,6 +165,29 @@ class FolioDeletionClient(FolioApiClient):
         except Exception as e:
             return {"status": "failed", "user_id": user_id, "error": str(e)}
 
+    async def delete_request(self, request_id: str) -> Dict[str, Any]:
+        """Delete a single request from FOLIO."""
+        return await self._delete_record(
+            f"/circulation/requests/{request_id}",
+            request_id
+        )
+
+    async def find_request_by_item_barcode(self, item_barcode: str) -> List[Dict]:
+        """Find open requests for an item by barcode."""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                url = f"{self.folio_url}/circulation/requests"
+                params = {
+                    "query": f'(item.barcode=="{item_barcode}" and status=="Open*")',
+                    "limit": 100,
+                }
+                response = await client.get(url, headers=self.headers, params=params)
+                if response.status_code == 200:
+                    return response.json().get("requests", [])
+                return []
+        except Exception:
+            return []
+
     async def checkin_loan_by_barcode(self, item_barcode: str, service_point_id: str) -> Dict[str, Any]:
         """Check in (return) a loan by item barcode via FOLIO circulation API.
 
@@ -457,6 +480,26 @@ class DeletionService:
                 service_point_id = self._fallback_service_point_id or ""
             return await folio_client.checkin_loan_by_barcode(item_barcode, service_point_id)
 
+        elif record_type == RecordType.REQUESTS:
+            # For requests, find open requests by item barcode and delete them
+            item_barcode = local_record.get("item_barcode", record_id) if local_record else record_id
+            requests = await folio_client.find_request_by_item_barcode(item_barcode)
+            if not requests:
+                return {"status": "not_found", "id": item_barcode, "error": "No open request for this item"}
+            # Delete matching requests (filter by patron if available)
+            patron_barcode = local_record.get("patron_barcode", "") if local_record else ""
+            deleted = 0
+            for req in requests:
+                req_patron = req.get("requester", {}).get("barcode", "")
+                if patron_barcode and req_patron != patron_barcode:
+                    continue
+                result = await folio_client.delete_request(req["id"])
+                if result["status"] == "deleted":
+                    deleted += 1
+            if deleted > 0:
+                return {"status": "deleted", "id": item_barcode}
+            return {"status": "failed", "id": item_barcode, "error": "Failed to delete matching requests"}
+
         return {"status": "skipped", "error": f"Unsupported record type: {record_type}"}
 
     def _get_record_type(self, task_type: str, task_name: str = "") -> Optional[RecordType]:
@@ -468,6 +511,7 @@ class DeletionService:
             "UserTransformer": RecordType.USERS,
             "BibsAndItemsTransformer": RecordType.INSTANCES,
             "LoansMigrator": RecordType.LOANS,
+            "RequestsMigrator": RecordType.REQUESTS,
         }
 
         # Direct mapping
@@ -505,6 +549,14 @@ class DeletionService:
             source_path = iteration_path / "source_data" / "loans"
             if source_path.exists():
                 for f in source_path.glob("loans.tsv"):
+                    return f
+            return None
+
+        # For RequestsMigrator, use the source requests.tsv file
+        if execution.task_type == "RequestsMigrator":
+            source_path = iteration_path / "source_data" / "requests"
+            if source_path.exists():
+                for f in source_path.glob("requests.tsv"):
                     return f
             return None
 
@@ -553,6 +605,23 @@ class DeletionService:
                             "id": barcode,
                             "item_barcode": barcode,
                             "service_point_id": row.get("service_point_id", "").strip(),
+                        })
+            return records
+
+        # For requests, read TSV file with item_barcode and patron_barcode
+        if record_type == RecordType.REQUESTS:
+            import csv
+            records = []
+            with open(file_path, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f, delimiter="\t")
+                for row in reader:
+                    item_barcode = row.get("item_barcode", "").strip()
+                    patron_barcode = row.get("patron_barcode", "").strip()
+                    if item_barcode:
+                        records.append({
+                            "id": item_barcode,
+                            "item_barcode": item_barcode,
+                            "patron_barcode": patron_barcode,
                         })
             return records
 

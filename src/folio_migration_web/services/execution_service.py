@@ -352,6 +352,11 @@ class ExecutionService:
         if match:
             result["total"] = int(match.group(1))
 
+        # RequestsMigrator: "Loaded and validated 8 requests in total"
+        match = re.search(r"Loaded and validated (\d+) requests in total", line, re.IGNORECASE)
+        if match:
+            result["total"] = int(match.group(1))
+
         # folio_migration_tools: "14 records processed"
         match = re.search(r"(\d+) records processed", line, re.IGNORECASE)
         if match:

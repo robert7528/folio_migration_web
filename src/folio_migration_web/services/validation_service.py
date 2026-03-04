@@ -31,6 +31,7 @@ class RecordType(str, Enum):
     ITEMS = "items"
     USERS = "users"
     LOANS = "loans"
+    REQUESTS = "requests"
 
 
 @dataclass
