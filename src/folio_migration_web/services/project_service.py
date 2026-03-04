@@ -98,6 +98,10 @@ class ProjectService:
                 result["tool_version"] = tool_version
                 result["python_version"] = f"{sys.version_info.major}.{sys.version_info.minor}"
                 result["steps"].append({"step": 4, "name": "install_tools", "status": "success"})
+
+                patches = self._patch_known_bugs(client_path)
+                result["patches_applied"] = patches
+                result["steps"].append({"step": "4a", "name": "patch_known_bugs", "status": "success", "patches": patches})
             else:
                 result["steps"].append({"step": 3, "name": "create_venv", "status": "skipped"})
                 result["steps"].append({"step": 4, "name": "install_tools", "status": "skipped"})
@@ -202,6 +206,41 @@ class ProjectService:
             pass
 
         return None
+
+    def _patch_known_bugs(self, client_path: Path) -> list:
+        """Check and patch known bugs in folio_migration_tools after installation.
+
+        Returns list of patches applied.
+        See: docs/issues/folio_migration_tools_issue_requests_fulfilment_spelling.md
+        """
+        patches = []
+
+        # Find site-packages path for folio_migration_tools
+        venv_path = client_path / ".venv"
+        legacy_request = None
+        for candidate in venv_path.rglob("folio_migration_tools/transaction_migration/legacy_request.py"):
+            legacy_request = candidate
+            break
+
+        if not legacy_request or not legacy_request.exists():
+            return patches
+
+        content = legacy_request.read_text(encoding="utf-8")
+
+        # Bug: fulfilmentPreference (British spelling) should be fulfillmentPreference (American)
+        if '"fulfilmentPreference"' in content:
+            content = content.replace('"fulfilmentPreference"', '"fulfillmentPreference"')
+            legacy_request.write_text(content, encoding="utf-8")
+
+            # Clear bytecode cache
+            pycache = legacy_request.parent / "__pycache__"
+            if pycache.exists():
+                for pyc in pycache.glob("legacy_request*.pyc"):
+                    pyc.unlink()
+
+            patches.append("fulfilmentPreference → fulfillmentPreference (legacy_request.py)")
+
+        return patches
 
     def _create_env_file(self, client_path: Path, client_name: str):
         """Create .env file for credentials."""
