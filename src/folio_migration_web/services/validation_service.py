@@ -437,14 +437,14 @@ class ValidationService:
                         if f.name.startswith(pattern) and "other" not in f.name:
                             return f
 
-        # For RequestsMigrator, look for the requests output file
+        # For RequestsMigrator, use the source requests.tsv file
+        # (RequestsMigrator posts directly to FOLIO; no JSON output file is produced)
         if execution.task_type == "RequestsMigrator":
-            for f in results_path.rglob("*.json"):
-                if "requests" in f.name.lower() and "migrate" in f.name.lower():
+            source_path = iteration_path / "source_data" / "requests"
+            if source_path.exists():
+                for f in source_path.glob("requests.tsv"):
                     return f
-            # Also check for folio_requests_*.json pattern
-            for f in results_path.rglob("folio_requests_*.json"):
-                return f
+            return None
 
         # Look for folio_*.json files containing the task name
         for f in results_path.rglob("folio_*.json"):
@@ -491,7 +491,11 @@ class ValidationService:
         return uuid_to_legacy
 
     def _load_local_records(self, file_path: Path, record_type: RecordType) -> List[Dict]:
-        """Load records from local JSON file."""
+        """Load records from local JSON or TSV file."""
+        # Handle TSV format for transaction migrators (Requests, Loans)
+        if file_path.suffix == ".tsv":
+            return self._load_tsv_records(file_path)
+
         content = file_path.read_text(encoding="utf-8")
 
         # Handle JSONL format (one JSON object per line)
@@ -519,6 +523,16 @@ class ValidationService:
             except json.JSONDecodeError:
                 pass
 
+        return records
+
+    def _load_tsv_records(self, file_path: Path) -> List[Dict]:
+        """Load records from TSV file (used by transaction migrators)."""
+        import csv
+        records = []
+        with open(file_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f, delimiter="\t")
+            for row in reader:
+                records.append(dict(row))
         return records
 
     async def _validate_record(
@@ -610,9 +624,9 @@ class ValidationService:
         if record_type == RecordType.USERS:
             return record.get("externalSystemId") or record.get("barcode")
 
-        # For requests, use item barcode as identifier
+        # For requests, use item_barcode from source TSV as identifier
         if record_type == RecordType.REQUESTS:
-            return record.get("item", {}).get("barcode") or record.get("id")
+            return record.get("item_barcode") or record.get("id")
 
         return None
 
@@ -659,10 +673,15 @@ class ValidationService:
             if barcode:
                 return await folio_client.get_item_by_barcode(barcode)
 
-        # Try by UUID for requests
+        # For requests (source is TSV), query by item barcode
         if record_type == RecordType.REQUESTS:
-            if record_id:
-                return await folio_client.get_request_by_id(record_id)
+            item_barcode = local_record.get("item_barcode")
+            if item_barcode:
+                result = await folio_client.query_requests(
+                    f'item.barcode=="{item_barcode}"', limit=1
+                )
+                records = result.get("records", [])
+                return records[0] if records else None
             return None
 
         # Try by external ID / barcode for users
@@ -744,9 +763,9 @@ class ValidationService:
                 # patronGroup excluded: local has legacy code, FOLIO has UUID
             ],
             RecordType.REQUESTS: [
-                "requestType",
-                "fulfillmentPreference",
-                "pickupServicePointId",
+                # Existence check only: source TSV fields (item_barcode, request_type)
+                # don't map 1:1 to FOLIO fields (requestType, fulfillmentPreference).
+                # Finding a request by item barcode = validation pass.
             ],
         }
         return fields_map.get(record_type, [])
