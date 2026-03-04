@@ -256,6 +256,10 @@ class ExecutionService:
                             execution.success_count = progress_info["success"]
                         if progress_info.get("errors"):
                             execution.error_count = progress_info["errors"]
+                        # Increment success count for each successful operation
+                        if progress_info.get("success_increment"):
+                            execution.success_count = (execution.success_count or 0) + progress_info["success_increment"]
+                            execution.processed_records = (execution.processed_records or 0) + 1
                         # Increment error count for each ERROR/CRITICAL log line
                         if progress_info.get("error_increment"):
                             execution.error_count = (execution.error_count or 0) + progress_info["error_increment"]
@@ -352,10 +356,21 @@ class ExecutionService:
         if match:
             result["total"] = int(match.group(1))
 
-        # RequestsMigrator: "Loaded and validated 8 requests in total"
-        match = re.search(r"Loaded and validated (\d+) requests in total", line, re.IGNORECASE)
+        # RequestsMigrator: "Loaded and validated 8 requests in file"
+        # Also matches: "Loaded and validated 8 requests against barcodes"
+        match = re.search(r"Loaded and validated (\d+) requests", line, re.IGNORECASE)
         if match:
             result["total"] = int(match.group(1))
+
+        # RequestsMigrator: "200 Successfully created Page" / "200 Successfully created Hold"
+        match = re.search(r"Successfully created (?:Page|Hold|Recall)", line, re.IGNORECASE)
+        if match:
+            result["success_increment"] = 1
+
+        # Generic migrator: "Total objects: 8"
+        match = re.search(r"Total objects:\s*(\d+)", line, re.IGNORECASE)
+        if match:
+            result["processed"] = int(match.group(1))
 
         # folio_migration_tools: "14 records processed"
         match = re.search(r"(\d+) records processed", line, re.IGNORECASE)
