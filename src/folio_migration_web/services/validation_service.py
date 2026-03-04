@@ -185,6 +185,7 @@ class FolioApiClient:
             RecordType.HOLDINGS: "/holdings-storage/holdings",
             RecordType.ITEMS: "/item-storage/items",
             RecordType.USERS: "/users",
+            RecordType.REQUESTS: "/circulation/requests",
         }
         endpoint = endpoint_map.get(record_type)
         if not endpoint:
@@ -285,6 +286,30 @@ class FolioApiClient:
         records = result.get("records", [])
         return records[0] if records else None
 
+    async def get_request_by_id(self, request_id: str) -> Optional[Dict]:
+        """Get request by UUID."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            url = f"{self.folio_url}/circulation/requests/{request_id}"
+            response = await client.get(url, headers=self.headers)
+            if response.status_code == 200:
+                return response.json()
+            return None
+
+    async def query_requests(
+        self,
+        query: str,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """Query requests from FOLIO."""
+        return await self._query_records(
+            "/circulation/requests",
+            query,
+            limit,
+            offset,
+            "requests",
+        )
+
 
 class ValidationService:
     """Service for validating migration data against FOLIO."""
@@ -361,6 +386,7 @@ class ValidationService:
             "ItemsTransformer": RecordType.ITEMS,
             "ItemsCsvTransformer": RecordType.ITEMS,
             "UserTransformer": RecordType.USERS,
+            "RequestsMigrator": RecordType.REQUESTS,
         }
 
         # Direct mapping
@@ -410,6 +436,15 @@ class ValidationService:
                     for f in results_path.rglob("*.json"):
                         if f.name.startswith(pattern) and "other" not in f.name:
                             return f
+
+        # For RequestsMigrator, look for the requests output file
+        if execution.task_type == "RequestsMigrator":
+            for f in results_path.rglob("*.json"):
+                if "requests" in f.name.lower() and "migrate" in f.name.lower():
+                    return f
+            # Also check for folio_requests_*.json pattern
+            for f in results_path.rglob("folio_requests_*.json"):
+                return f
 
         # Look for folio_*.json files containing the task name
         for f in results_path.rglob("folio_*.json"):
@@ -575,6 +610,10 @@ class ValidationService:
         if record_type == RecordType.USERS:
             return record.get("externalSystemId") or record.get("barcode")
 
+        # For requests, use item barcode as identifier
+        if record_type == RecordType.REQUESTS:
+            return record.get("item", {}).get("barcode") or record.get("id")
+
         return None
 
     async def _fetch_folio_record(
@@ -593,6 +632,7 @@ class ValidationService:
                 RecordType.INSTANCES: folio_client.get_instance_by_id,
                 RecordType.HOLDINGS: folio_client.get_holding_by_id,
                 RecordType.ITEMS: folio_client.get_item_by_id,
+                RecordType.REQUESTS: folio_client.get_request_by_id,
             }
             fetcher = fetch_by_id.get(record_type)
             if fetcher:
@@ -618,6 +658,12 @@ class ValidationService:
             barcode = local_record.get("barcode")
             if barcode:
                 return await folio_client.get_item_by_barcode(barcode)
+
+        # Try by UUID for requests
+        if record_type == RecordType.REQUESTS:
+            if record_id:
+                return await folio_client.get_request_by_id(record_id)
+            return None
 
         # Try by external ID / barcode for users
         if record_type == RecordType.USERS:
@@ -696,6 +742,11 @@ class ValidationService:
                 "personal.lastName",
                 "personal.firstName",
                 # patronGroup excluded: local has legacy code, FOLIO has UUID
+            ],
+            RecordType.REQUESTS: [
+                "requestType",
+                "fulfillmentPreference",
+                "pickupServicePointId",
             ],
         }
         return fields_map.get(record_type, [])
