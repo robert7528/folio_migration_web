@@ -390,13 +390,23 @@ FOLIO UI → Requests，應可看到遷移的預約記錄。確認：
 
 **原因：** folio_migration_tools 使用英式拼法 `fulfilmentPreference`（單 l），但較新版本的 FOLIO 平台要求美式拼法 `fulfillmentPreference`（雙 l）。FOLIO 收到 null 值導致驗證失敗。
 
-**解決：** 修補 folio_migration_tools 安裝目錄中的 `transaction_migration/legacy_request.py`：
+**自動修補：** Web Portal 在建立新客戶（安裝 folio_migration_tools）時會自動檢查並修補此問題。安裝完成後可在 setup result 的 `patches_applied` 欄位確認是否已套用修補。
+
+**手動修補：** 如果是既有客戶或手動重新安裝 folio_migration_tools，需手動修補：
 
 ```bash
 SITE_PKG=/path/to/clients/thu/.venv/lib/python3.13/site-packages/folio_migration_tools
 sed -i 's/"fulfilmentPreference"/"fulfillmentPreference"/g' "$SITE_PKG/transaction_migration/legacy_request.py"
 rm -f "$SITE_PKG/transaction_migration/__pycache__/legacy_request*.pyc"
 ```
+
+**確認修補：**
+```bash
+grep "fillmentPreference" "$SITE_PKG/transaction_migration/legacy_request.py"
+# 應顯示: "fulfillmentPreference" (雙 l)，不應出現 "fulfilmentPreference" (單 l)
+```
+
+詳細 bug 說明參見：[docs/issues/folio_migration_tools_issue_requests_fulfilment_spelling.md](../issues/folio_migration_tools_issue_requests_fulfilment_spelling.md)
 
 ### Q6: Request type 需要 Page 但 policy 不允許
 
