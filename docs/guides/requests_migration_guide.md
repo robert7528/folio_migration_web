@@ -320,7 +320,31 @@ FOLIO UI → Requests，應可看到遷移的預約記錄。
 
 **解決：** 確認 items 轉檔是否完整。
 
-### Q5: Patron 不存在導致 request 失敗
+### Q5: Fulfillment preference must be one of the following: Hold Shelf, Delivery
+
+**原因：** folio_migration_tools 使用英式拼法 `fulfilmentPreference`（單 l），但較新版本的 FOLIO 平台要求美式拼法 `fulfillmentPreference`（雙 l）。FOLIO 收到 null 值導致驗證失敗。
+
+**解決：** 修補 folio_migration_tools 安裝目錄中的 `transaction_migration/legacy_request.py`：
+
+```bash
+SITE_PKG=/path/to/clients/thu/.venv/lib/python3.13/site-packages/folio_migration_tools
+sed -i 's/"fulfilmentPreference"/"fulfillmentPreference"/g' "$SITE_PKG/transaction_migration/legacy_request.py"
+rm -f "$SITE_PKG/transaction_migration/__pycache__/legacy_request*.pyc"
+```
+
+### Q6: Request type 需要 Page 但 policy 不允許
+
+**原因：** RequestsMigrator 偵測到 item 狀態為 Available 時，自動將 Hold 改為 Page。但 circulation rules 中的 request policy（如 "for-check-out-items"）可能只允許 Hold，不允許 Page。
+
+**解決：** 遷移期間暫時將 circulation rules 的 request policy 改為 "Allow All"（需確認 Page 的 fulfillment type 中 Hold Shelf 已勾選）。遷移完成後改回原設定。
+
+### Q7: Service point 未啟用 Pickup location
+
+**原因：** FOLIO 要求 pickup service point 必須啟用「Is pickup location」才能接受 Hold Shelf 類型的預約。
+
+**解決：** 到 FOLIO Settings → Tenant → Service points，對相關 service point 勾選 **Is pickup location** 並設定 **Hold shelf expiry period**（建議 7 天）。
+
+### Q8: Patron 不存在導致 request 失敗
 
 **原因：** 該讀者帳號未匯入 FOLIO。
 
