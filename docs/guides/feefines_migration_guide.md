@@ -182,15 +182,17 @@ Service point mapping，`ManualFeeFinesTransformer` 必須要有 `servicePointMa
 ### 方法一：FOLIO API 確認
 
 ```bash
-# 查詢 Tunghai University 的 fee/fine 總數
-curl -s "${FOLIO_URL}/accounts?query=feeFineOwner==Tunghai*&limit=0" \
-  -H "x-okapi-tenant: ${FOLIO_TENANT}" \
-  -H "x-okapi-token: ${FOLIO_TOKEN}" | jq '.totalRecords'
+# 查詢 fee/fine 總數
+curl -s "${FOLIO_URL}/accounts?limit=0" -H "X-Okapi-Tenant: ${FOLIO_TENANT}" -H "X-Okapi-Token: ${FOLIO_TOKEN}" | python3 -c "import sys,json; print('total:', json.load(sys.stdin).get('totalRecords'))"
+
+# 查詢前 5 筆 fee/fine 的摘要
+curl -s "${FOLIO_URL}/accounts?limit=5" -H "X-Okapi-Tenant: ${FOLIO_TENANT}" -H "X-Okapi-Token: ${FOLIO_TOKEN}" | python3 -c "import sys,json; d=json.load(sys.stdin); [print(a['id'], a.get('amount'), a.get('remaining'), a.get('feeFineOwner')) for a in d.get('accounts',[])]"
+
+# 查詢特定 account by UUID
+curl -s "${FOLIO_URL}/accounts/${ACCOUNT_UUID}" -H "X-Okapi-Tenant: ${FOLIO_TENANT}" -H "X-Okapi-Token: ${FOLIO_TOKEN}" | python3 -m json.tool
 
 # 查詢特定使用者的 fee/fine
-curl -s "${FOLIO_URL}/accounts?query=userId==${USER_UUID}&limit=100" \
-  -H "x-okapi-tenant: ${FOLIO_TENANT}" \
-  -H "x-okapi-token: ${FOLIO_TOKEN}" | jq '.accounts[] | {amount, remaining, status}'
+curl -s "${FOLIO_URL}/accounts?query=userId==${USER_UUID}&limit=100" -H "X-Okapi-Tenant: ${FOLIO_TENANT}" -H "X-Okapi-Token: ${FOLIO_TOKEN}" | python3 -c "import sys,json; d=json.load(sys.stdin); [print(a['id'], a.get('amount'), a.get('status',{}).get('name')) for a in d.get('accounts',[])]"
 ```
 
 ### 方法二：Web Portal Data Validation
@@ -209,13 +211,28 @@ curl -s "${FOLIO_URL}/accounts?query=userId==${USER_UUID}&limit=100" \
 
 ## 批次刪除（回滾）
 
-如需刪除已遷移的 fee/fine 記錄：
+### 方法一：Web Portal Batch Deletion
 
 1. 到 **Batch Deletion** 頁面
-2. 選擇 `transform_feefines` 或 `post_feefines` 的執行記錄
+2. 選擇 `transform_feefines`（ManualFeeFinesTransformer）的執行記錄
 3. 點擊 **Preview** 確認刪除範圍
 4. 點擊 **Start Deletion** 開始刪除
 5. 每筆記錄透過 `DELETE /accounts/{id}` API 刪除
+
+### 方法二：FOLIO API 手動刪除
+
+```bash
+# 刪除單一 account
+curl -s -X DELETE "${FOLIO_URL}/accounts/${ACCOUNT_UUID}" -H "X-Okapi-Tenant: ${FOLIO_TENANT}" -H "X-Okapi-Token: ${FOLIO_TOKEN}"
+
+# 批次刪除所有 accounts（危險！會刪除全部 fee/fine 資料）
+curl -s "${FOLIO_URL}/accounts?limit=100" -H "X-Okapi-Tenant: ${FOLIO_TENANT}" -H "X-Okapi-Token: ${FOLIO_TOKEN}" | python3 -c "import sys,json; d=json.load(sys.stdin); [print(a['id']) for a in d.get('accounts',[])]" | while read id; do curl -s -X DELETE "${FOLIO_URL}/accounts/${id}" -H "X-Okapi-Tenant: ${FOLIO_TENANT}" -H "X-Okapi-Token: ${FOLIO_TOKEN}"; echo "Deleted: ${id}"; done
+
+# 確認刪除結果
+curl -s "${FOLIO_URL}/accounts?limit=0" -H "X-Okapi-Tenant: ${FOLIO_TENANT}" -H "X-Okapi-Token: ${FOLIO_TOKEN}" | python3 -c "import sys,json; print('remaining:', json.load(sys.stdin).get('totalRecords'))"
+```
+
+> **注意**：刪除後如需重新遷移，必須重新執行 `transform_feefines` 和 `post_feefines`。
 
 ## 常見問題
 
