@@ -304,8 +304,15 @@ async def start_deletion(
         "BibsAndItemsTransformer": "instances",
         "LoansMigrator": "loans",
         "RequestsMigrator": "requests",
+        "ManualFeeFinesTransformer": "feefines",
     }
     record_type = task_type_mapping.get(execution.task_type)
+
+    # For BatchPoster, determine type from task_name
+    if not record_type and execution.task_type == "BatchPoster":
+        task_name_lower = execution.task_name.lower()
+        if "feefine" in task_name_lower or "fee_fine" in task_name_lower:
+            record_type = "feefines"
 
     # Create deletion record
     deletion_id = str(uuid.uuid4())

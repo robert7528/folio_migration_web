@@ -1,0 +1,88 @@
+{
+    "data": [
+        {
+            "folio_field": "legacyIdentifier",
+            "legacy_field": "",
+            "value": "",
+            "description": "Leave this blank."
+        },
+        {
+            "folio_field": "account.amount",
+            "legacy_field": "amount",
+            "value": "",
+            "description": "The original amount."
+        },
+        {
+            "folio_field": "account.remaining",
+            "legacy_field": "remaining",
+            "value": "",
+            "description": "The remaining amount."
+        },
+        {
+            "folio_field": "account.paymentStatus.name",
+            "legacy_field": "",
+            "value": "Outstanding",
+            "description": "This must be one of the allowed statuses."
+        },
+        {
+            "folio_field": "account.status.name",
+            "legacy_field": "",
+            "value": "Open",
+            "description": "Whatever you map this to, it will be Open/Closed depending on the remaining amount."
+        },
+        {
+            "folio_field": "account.userId",
+            "legacy_field": "patron_barcode",
+            "value": "",
+            "description": "The patron's barcode. The migration task will try to match this to a user in FOLIO."
+        },
+        {
+            "folio_field": "account.itemId",
+            "legacy_field": "item_barcode",
+            "value": "",
+            "description": "Optional - the barcode of an item associated with the fee/fine. The migration task will try to match this to an item in FOLIO."
+        },
+        {
+            "folio_field": "account.feeFineId",
+            "legacy_field": "type",
+            "value": "",
+            "description": "This is the feefine type (Settings > Users > Fee/Fine > Manual charges)."
+        },
+        {
+            "folio_field": "account.ownerId",
+            "legacy_field": "lending_library",
+            "value": "",
+            "description": "The fee fine owner."
+        },
+        {
+            "folio_field": "feefineaction.accountId",
+            "legacy_field": "",
+            "value": "",
+            "description": "Leave blank. This will link the feeFineAction to the account."
+        },
+        {
+            "folio_field": "feefineaction.userId",
+            "legacy_field": "patron_barcode",
+            "value": "",
+            "description": "The patron's barcode. The migration task will try to match this to a user in FOLIO."
+        },
+        {
+            "folio_field": "feefineaction.dateAction",
+            "legacy_field": "billed_date",
+            "value": "",
+            "description": "Date when the fee/fine was billed."
+        },
+        {
+            "folio_field": "feefineaction.comments",
+            "legacy_field": "",
+            "value": "",
+            "description": "In addition to any source field mapped to this, we will also add a string representing the entire source object as a comment."
+        },
+        {
+            "folio_field": "feefineaction.createdAt",
+            "legacy_field": "borrowing_desk",
+            "value": "",
+            "description": "The service point where this fee/fine was created. Left empty for THU migration."
+        }
+    ]
+}

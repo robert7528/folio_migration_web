@@ -100,6 +100,10 @@ class ExecutionService:
         if "courseReserveFilePath" in task:
             files.append(task["courseReserveFilePath"])
 
+        # ManualFeeFinesTransformer uses feeFinesFile
+        if "feeFinesFile" in task:
+            files.append(task["feeFinesFile"])
+
         return files
 
     def create_execution(

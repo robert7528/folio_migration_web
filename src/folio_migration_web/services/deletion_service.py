@@ -165,6 +165,13 @@ class FolioDeletionClient(FolioApiClient):
         except Exception as e:
             return {"status": "failed", "user_id": user_id, "error": str(e)}
 
+    async def delete_account(self, account_id: str) -> Dict[str, Any]:
+        """Delete a single fee/fine account from FOLIO."""
+        return await self._delete_record(
+            f"/accounts/{account_id}",
+            account_id
+        )
+
     async def delete_request(self, request_id: str) -> Dict[str, Any]:
         """Delete a single request from FOLIO."""
         return await self._delete_record(
@@ -480,6 +487,10 @@ class DeletionService:
                 service_point_id = self._fallback_service_point_id or ""
             return await folio_client.checkin_loan_by_barcode(item_barcode, service_point_id)
 
+        elif record_type == RecordType.FEEFINES:
+            # For fee/fines, delete the account by UUID
+            return await folio_client.delete_account(record_id)
+
         elif record_type == RecordType.REQUESTS:
             # For requests, find open requests by item barcode and delete them
             item_barcode = local_record.get("item_barcode", record_id) if local_record else record_id
@@ -512,6 +523,7 @@ class DeletionService:
             "BibsAndItemsTransformer": RecordType.INSTANCES,
             "LoansMigrator": RecordType.LOANS,
             "RequestsMigrator": RecordType.REQUESTS,
+            "ManualFeeFinesTransformer": RecordType.FEEFINES,
         }
 
         # Direct mapping
@@ -529,6 +541,8 @@ class DeletionService:
                 return RecordType.ITEMS
             elif "user" in task_name_lower:
                 return RecordType.USERS
+            elif "feefine" in task_name_lower or "fee_fine" in task_name_lower:
+                return RecordType.FEEFINES
 
         return None
 
@@ -552,6 +566,17 @@ class DeletionService:
                     return f
             return None
 
+        # For ManualFeeFinesTransformer or BatchPoster(feefines), find extradata file
+        if execution.task_type == "ManualFeeFinesTransformer":
+            for f in results_path.rglob("*feefines*extradata*"):
+                return f
+            for f in results_path.rglob("*extradata*"):
+                if "feefine" in f.name.lower() or "fee_fine" in f.name.lower():
+                    return f
+            for f in results_path.rglob(f"*{execution.task_name}*"):
+                return f
+            return None
+
         # For RequestsMigrator, use the source requests.tsv file
         if execution.task_type == "RequestsMigrator":
             source_path = iteration_path / "source_data" / "requests"
@@ -565,6 +590,14 @@ class DeletionService:
         if execution.task_type == "BatchPoster":
             record_type = self._get_record_type(execution.task_type, execution.task_name)
             if record_type:
+                # For FEEFINES BatchPoster, find extradata file
+                if record_type == RecordType.FEEFINES:
+                    for f in results_path.rglob("*feefines*extradata*"):
+                        return f
+                    for f in results_path.rglob("*extradata*"):
+                        if "feefine" in f.name.lower() or "fee_fine" in f.name.lower():
+                            return f
+
                 # Map record type to expected file pattern
                 type_to_pattern = {
                     RecordType.INSTANCES: "folio_instances_",
@@ -592,6 +625,34 @@ class DeletionService:
 
     def _load_records(self, file_path: Path, record_type: RecordType) -> List[Dict]:
         """Load records from local JSON or TSV file."""
+        # For fee/fines, read extradata file (uuid\tjson per line)
+        if record_type == RecordType.FEEFINES:
+            records = []
+            content = file_path.read_text(encoding="utf-8")
+            for line in content.strip().split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                if "\t" in line:
+                    parts = line.split("\t", 1)
+                    if len(parts) == 2:
+                        try:
+                            record = json.loads(parts[1])
+                            if isinstance(record, dict):
+                                if "id" not in record:
+                                    record["id"] = parts[0]
+                                records.append(record)
+                                continue
+                        except json.JSONDecodeError:
+                            pass
+                try:
+                    record = json.loads(line)
+                    if isinstance(record, dict):
+                        records.append(record)
+                except json.JSONDecodeError:
+                    continue
+            return records
+
         # For loans, read TSV file with item_barcode and service_point_id
         if record_type == RecordType.LOANS:
             import csv

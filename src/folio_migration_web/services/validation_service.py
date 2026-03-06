@@ -32,6 +32,7 @@ class RecordType(str, Enum):
     USERS = "users"
     LOANS = "loans"
     REQUESTS = "requests"
+    FEEFINES = "feefines"
 
 
 @dataclass
@@ -186,6 +187,7 @@ class FolioApiClient:
             RecordType.ITEMS: "/item-storage/items",
             RecordType.USERS: "/users",
             RecordType.REQUESTS: "/circulation/requests",
+            RecordType.FEEFINES: "/accounts",
         }
         endpoint = endpoint_map.get(record_type)
         if not endpoint:
@@ -310,6 +312,30 @@ class FolioApiClient:
             "requests",
         )
 
+    async def get_account_by_id(self, account_id: str) -> Optional[Dict]:
+        """Get fee/fine account by UUID."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            url = f"{self.folio_url}/accounts/{account_id}"
+            response = await client.get(url, headers=self.headers)
+            if response.status_code == 200:
+                return response.json()
+            return None
+
+    async def query_accounts(
+        self,
+        query: str,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """Query fee/fine accounts from FOLIO."""
+        return await self._query_records(
+            "/accounts",
+            query,
+            limit,
+            offset,
+            "accounts",
+        )
+
 
 class ValidationService:
     """Service for validating migration data against FOLIO."""
@@ -387,6 +413,7 @@ class ValidationService:
             "ItemsCsvTransformer": RecordType.ITEMS,
             "UserTransformer": RecordType.USERS,
             "RequestsMigrator": RecordType.REQUESTS,
+            "ManualFeeFinesTransformer": RecordType.FEEFINES,
         }
 
         # Direct mapping
@@ -404,6 +431,8 @@ class ValidationService:
                 return RecordType.ITEMS
             elif "user" in task_name_lower:
                 return RecordType.USERS
+            elif "feefine" in task_name_lower or "fee_fine" in task_name_lower:
+                return RecordType.FEEFINES
 
         return None
 
@@ -436,6 +465,18 @@ class ValidationService:
                     for f in results_path.rglob("*.json"):
                         if f.name.startswith(pattern) and "other" not in f.name:
                             return f
+
+        # For ManualFeeFinesTransformer, find extradata file in results
+        if execution.task_type == "ManualFeeFinesTransformer":
+            for f in results_path.rglob("*feefines*extradata*"):
+                return f
+            for f in results_path.rglob("*extradata*"):
+                if "feefine" in f.name.lower() or "fee_fine" in f.name.lower():
+                    return f
+            # Also try the task name pattern
+            for f in results_path.rglob(f"*{execution.task_name}*"):
+                return f
+            return None
 
         # For RequestsMigrator, use the source requests.tsv file
         # (RequestsMigrator posts directly to FOLIO; no JSON output file is produced)
@@ -496,6 +537,11 @@ class ValidationService:
         if file_path.suffix == ".tsv":
             return self._load_tsv_records(file_path)
 
+        # Handle extradata format for fee/fines
+        # Extradata lines: "<uuid>\t{json_payload}" per line
+        if record_type == RecordType.FEEFINES:
+            return self._load_extradata_records(file_path)
+
         content = file_path.read_text(encoding="utf-8")
 
         # Handle JSONL format (one JSON object per line)
@@ -533,6 +579,40 @@ class ValidationService:
             reader = csv.DictReader(f, delimiter="\t")
             for row in reader:
                 records.append(dict(row))
+        return records
+
+    def _load_extradata_records(self, file_path: Path) -> List[Dict]:
+        """Load records from extradata file (used by ManualFeeFinesTransformer).
+
+        Extradata format: each line is "<uuid>\\t<json_payload>"
+        The JSON payload contains the account data with an "id" field.
+        """
+        records = []
+        content = file_path.read_text(encoding="utf-8")
+        for line in content.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            # Try extradata format: uuid\tjson
+            if "\t" in line:
+                parts = line.split("\t", 1)
+                if len(parts) == 2:
+                    try:
+                        record = json.loads(parts[1])
+                        if isinstance(record, dict):
+                            if "id" not in record:
+                                record["id"] = parts[0]
+                            records.append(record)
+                            continue
+                    except json.JSONDecodeError:
+                        pass
+            # Fallback: try as plain JSON
+            try:
+                record = json.loads(line)
+                if isinstance(record, dict):
+                    records.append(record)
+            except json.JSONDecodeError:
+                continue
         return records
 
     async def _validate_record(
@@ -628,6 +708,10 @@ class ValidationService:
         if record_type == RecordType.REQUESTS:
             return record.get("item_barcode") or record.get("id")
 
+        # For fee/fines, use the account UUID as identifier
+        if record_type == RecordType.FEEFINES:
+            return record.get("id")
+
         return None
 
     async def _fetch_folio_record(
@@ -647,6 +731,7 @@ class ValidationService:
                 RecordType.HOLDINGS: folio_client.get_holding_by_id,
                 RecordType.ITEMS: folio_client.get_item_by_id,
                 RecordType.REQUESTS: folio_client.get_request_by_id,
+                RecordType.FEEFINES: folio_client.get_account_by_id,
             }
             fetcher = fetch_by_id.get(record_type)
             if fetcher:
@@ -766,6 +851,11 @@ class ValidationService:
                 # Existence check only: source TSV fields (item_barcode, request_type)
                 # don't map 1:1 to FOLIO fields (requestType, fulfillmentPreference).
                 # Finding a request by item barcode = validation pass.
+            ],
+            RecordType.FEEFINES: [
+                "amount",
+                "remaining",
+                "status.name",
             ],
         }
         return fields_map.get(record_type, [])
