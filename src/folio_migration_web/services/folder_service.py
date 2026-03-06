@@ -25,7 +25,7 @@ ITERATION_FOLDERS = [
     "source_data/organizations",
     "source_data/orders",
     # Fees/Fines
-    "source_data/feefines",
+    "source_data/fees_fines",
 ]
 
 
