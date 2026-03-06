@@ -842,6 +842,7 @@ class ConfigService:
                 "feefinesMap": "manual_feefines_map.json",
                 "feefinesOwnerMap": "feefine_owners.tsv",
                 "feefinesTypeMap": "feefine_types.tsv",
+                "servicePointMap": "feefine_service_points.tsv",
                 "files": [{"file_name": "feefines.tsv"}],
             },
             {
