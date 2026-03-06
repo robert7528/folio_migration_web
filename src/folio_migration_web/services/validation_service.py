@@ -584,8 +584,9 @@ class ValidationService:
     def _load_extradata_records(self, file_path: Path) -> List[Dict]:
         """Load records from extradata file (used by ManualFeeFinesTransformer).
 
-        Extradata format: each line is "<uuid>\\t<json_payload>"
-        The JSON payload contains the account data with an "id" field.
+        Extradata format: each line is "<type>\\t<json_payload>"
+        where type is "account" or "feefineaction".
+        Only account lines are used for validation.
         """
         records = []
         content = file_path.read_text(encoding="utf-8")
@@ -593,26 +594,19 @@ class ValidationService:
             line = line.strip()
             if not line:
                 continue
-            # Try extradata format: uuid\tjson
             if "\t" in line:
                 parts = line.split("\t", 1)
                 if len(parts) == 2:
+                    record_type = parts[0].strip()
+                    # Only load account records, skip feefineaction
+                    if record_type != "account":
+                        continue
                     try:
                         record = json.loads(parts[1])
                         if isinstance(record, dict):
-                            if "id" not in record:
-                                record["id"] = parts[0]
                             records.append(record)
-                            continue
                     except json.JSONDecodeError:
                         pass
-            # Fallback: try as plain JSON
-            try:
-                record = json.loads(line)
-                if isinstance(record, dict):
-                    records.append(record)
-            except json.JSONDecodeError:
-                continue
         return records
 
     async def _validate_record(

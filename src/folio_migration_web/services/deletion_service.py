@@ -625,32 +625,23 @@ class DeletionService:
 
     def _load_records(self, file_path: Path, record_type: RecordType) -> List[Dict]:
         """Load records from local JSON or TSV file."""
-        # For fee/fines, read extradata file (uuid\tjson per line)
+        # For fee/fines, read extradata file (type\tjson per line)
+        # Only load "account" lines, skip "feefineaction" lines
         if record_type == RecordType.FEEFINES:
             records = []
             content = file_path.read_text(encoding="utf-8")
             for line in content.strip().split("\n"):
                 line = line.strip()
-                if not line:
+                if not line or "\t" not in line:
                     continue
-                if "\t" in line:
-                    parts = line.split("\t", 1)
-                    if len(parts) == 2:
-                        try:
-                            record = json.loads(parts[1])
-                            if isinstance(record, dict):
-                                if "id" not in record:
-                                    record["id"] = parts[0]
-                                records.append(record)
-                                continue
-                        except json.JSONDecodeError:
-                            pass
-                try:
-                    record = json.loads(line)
-                    if isinstance(record, dict):
-                        records.append(record)
-                except json.JSONDecodeError:
-                    continue
+                parts = line.split("\t", 1)
+                if len(parts) == 2 and parts[0].strip() == "account":
+                    try:
+                        record = json.loads(parts[1])
+                        if isinstance(record, dict):
+                            records.append(record)
+                    except json.JSONDecodeError:
+                        pass
             return records
 
         # For loans, read TSV file with item_barcode and service_point_id
