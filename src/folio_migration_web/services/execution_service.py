@@ -299,6 +299,14 @@ class ExecutionService:
                     stats = self._get_stats_from_report(
                         base_folder, execution.iteration, task_name
                     )
+                    # For feefines Extradata BatchPoster, each fee/fine produces
+                    # 2 records (account + feefineaction). Adjust to show actual count.
+                    if stats and execution.task_type == "BatchPoster":
+                        task_name_lower = (execution.task_name or "").lower()
+                        if "feefine" in task_name_lower or "fee_fine" in task_name_lower:
+                            for key in ("total", "processed", "success"):
+                                if key in stats and stats[key] > 0:
+                                    stats[key] = stats[key] // 2
                     if stats:
                         if stats.get("total"):
                             execution.total_records = stats["total"]
