@@ -51,7 +51,7 @@ templates.env.globals["root_path"] = settings.root_path
 
 
 # Import and include API routers
-from .api import clients, credentials, files, config_editor, health, tasks, executions, validation, deletion, folio_reference  # noqa: E402
+from .api import clients, credentials, files, config_editor, health, tasks, executions, validation, deletion, folio_reference, conversion  # noqa: E402
 
 app.include_router(clients.router)
 app.include_router(credentials.router)
@@ -64,6 +64,7 @@ app.include_router(executions.router)
 app.include_router(validation.router)
 app.include_router(deletion.router)
 app.include_router(folio_reference.router)
+app.include_router(conversion.router)
 
 
 # HTML Pages
@@ -210,6 +211,19 @@ async def deletion_page(request: Request, client_code: str):
         {
             "request": request,
             "title": "Batch Deletion",
+            "client_code": client_code,
+        },
+    )
+
+
+@app.get("/clients/{client_code}/conversion", response_class=HTMLResponse)
+async def conversion_page(request: Request, client_code: str):
+    """Data conversion page."""
+    return templates.TemplateResponse(
+        "conversion/index.html",
+        {
+            "request": request,
+            "title": "Data Conversion",
             "client_code": client_code,
         },
     )

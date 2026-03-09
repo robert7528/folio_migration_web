@@ -127,7 +127,7 @@ def extract_095_data(marc_file):
     print(f"Records with 095: {records_with_095}")
     print(f"Total 095 fields (items): {len(records_data)}")
 
-    return records_data
+    return records_data, record_count, records_with_095
 
 
 def generate_holdings_id(bib_id, location, material_type, call_number):
@@ -249,6 +249,39 @@ def show_sample(records_data, count=3):
         print(f"  Year: {data['year']}")
 
 
+def convert(marc_file: str, holdings_output: str, items_output: str) -> dict:
+    """Extract 095 fields from MARC and generate Holdings/Items TSV files.
+
+    Returns:
+        {"total_marc_records": int, "records_with_095": int,
+         "holdings_count": int, "items_count": int,
+         "warnings": list, "output_files": list}
+    """
+    records_data, record_count, records_with_095 = extract_095_data(marc_file)
+
+    if not records_data:
+        return {
+            "total_marc_records": record_count,
+            "records_with_095": 0,
+            "holdings_count": 0,
+            "items_count": 0,
+            "warnings": ["No 095 fields found in the MARC file."],
+            "output_files": [],
+        }
+
+    holdings_map = write_holdings_tsv(records_data, holdings_output)
+    write_items_tsv(records_data, holdings_map, items_output)
+
+    return {
+        "total_marc_records": record_count,
+        "records_with_095": records_with_095,
+        "holdings_count": len(holdings_map),
+        "items_count": len(records_data),
+        "warnings": [],
+        "output_files": [str(holdings_output), str(items_output)],
+    }
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -270,7 +303,7 @@ def main():
         items_output = base_dir / 'items' / 'items.tsv'
 
     # Extract data
-    records_data = extract_095_data(marc_file)
+    records_data, _record_count, _records_with_095 = extract_095_data(marc_file)
 
     if not records_data:
         print("\nNo 095 fields found in the MARC file.")

@@ -1,0 +1,514 @@
+{% extends "base.html" %}
+
+{% block title %}Data Conversion - {{ client_code }}{% endblock %}
+
+{% block content %}
+<div class="flex-between mb-2">
+    <h1>Data Conversion</h1>
+    <a href="{{ root_path }}/clients/{{ client_code }}" class="btn btn-secondary">Back to Project</a>
+</div>
+
+<p class="text-muted mb-2">
+    Convert HyLib source data (CSV/MARC) to FOLIO-compatible TSV files.
+    Output files are saved to the correct source_data directory automatically.
+</p>
+
+<!-- Conversion Form -->
+<div class="card mb-2">
+    <div class="card-header">
+        <span class="card-title">Convert Source Data</span>
+    </div>
+    <div class="p-2">
+        <!-- Iteration -->
+        <div class="form-group">
+            <label for="iteration-select">Iteration</label>
+            <select id="iteration-select" class="form-control">
+                <option value="">Loading...</option>
+            </select>
+        </div>
+
+        <!-- Conversion Type -->
+        <div class="form-group">
+            <label>Conversion Type</label>
+            <div class="type-cards" id="type-cards">
+                <!-- Filled by JS -->
+            </div>
+        </div>
+
+        <!-- Dependency Status -->
+        <div id="dependency-info" class="mb-1" style="display: none;">
+        </div>
+
+        <!-- File Upload -->
+        <div class="form-group">
+            <label for="file-input">Source File</label>
+            <div class="file-drop-zone" id="drop-zone">
+                <input type="file" id="file-input" style="display:none">
+                <p id="drop-text">Select a conversion type first</p>
+            </div>
+        </div>
+
+        <!-- Convert Button -->
+        <button id="convert-btn" class="btn btn-primary" onclick="startConversion()" disabled>
+            Convert
+        </button>
+    </div>
+</div>
+
+<!-- Conversion Progress -->
+<div id="conversion-progress" class="card mb-2" style="display: none;">
+    <div class="card-header">
+        <span class="card-title">Converting...</span>
+    </div>
+    <div class="p-2">
+        <div class="progress-bar mb-1">
+            <div class="progress-fill" id="progress-fill" style="width: 100%; animation: pulse 1.5s infinite;"></div>
+        </div>
+        <p id="progress-status" class="text-muted">Processing file...</p>
+    </div>
+</div>
+
+<!-- Conversion Result -->
+<div id="conversion-result" class="card mb-2" style="display: none;">
+    <div class="card-header">
+        <span class="card-title" id="result-title">Conversion Result</span>
+    </div>
+    <div class="p-2">
+        <div class="grid grid-3 mb-1" id="result-stats">
+        </div>
+        <div id="result-warnings" style="display: none;" class="mb-1">
+        </div>
+        <div id="result-files" class="mb-1">
+        </div>
+    </div>
+</div>
+
+<!-- Conversion History -->
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Recent Conversions</span>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Type</th>
+                    <th>Source File</th>
+                    <th>Result</th>
+                    <th>Records</th>
+                </tr>
+            </thead>
+            <tbody id="history-table">
+                <tr>
+                    <td colspan="5" class="text-center text-muted">No conversions in this session</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const clientCode = '{{ client_code }}';
+let selectedType = null;
+let conversionTypes = [];
+let conversionHistory = [];
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await Promise.all([loadIterations(), loadConversionTypes()]);
+    setupDropZone();
+});
+
+async function loadIterations() {
+    const select = document.getElementById('iteration-select');
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/convert/iterations`);
+        const data = await response.json();
+
+        if (data.iterations.length === 0) {
+            select.innerHTML = '<option value="">No iterations found</option>';
+            return;
+        }
+
+        select.innerHTML = data.iterations.map(iter =>
+            `<option value="${iter}">${iter}</option>`
+        ).join('');
+    } catch (error) {
+        select.innerHTML = '<option value="">Error loading iterations</option>';
+    }
+}
+
+async function loadConversionTypes() {
+    const container = document.getElementById('type-cards');
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/convert/types`);
+        const data = await response.json();
+        conversionTypes = data.types;
+
+        container.innerHTML = data.types.map(t => `
+            <div class="type-card" id="type-${t.key}" onclick="selectType('${t.key}')">
+                <div class="type-card-icon">${getTypeIcon(t.key)}</div>
+                <div class="type-card-label">${t.label.split('(')[0].trim()}</div>
+                ${t.needs_keepsite ? `
+                    <div class="type-card-dep ${t.keepsite_available ? 'dep-ok' : 'dep-missing'}">
+                        ${t.keepsite_available
+                            ? `keepsite mapping: ${t.keepsite_count} entries`
+                            : 'keepsite_service_points.tsv missing'}
+                    </div>
+                ` : ''}
+            </div>
+        `).join('');
+    } catch (error) {
+        container.innerHTML = '<p class="text-danger">Error loading conversion types</p>';
+    }
+}
+
+function getTypeIcon(key) {
+    switch (key) {
+        case 'feefines': return '$';
+        case 'loans': return '&#128214;';
+        case 'requests': return '&#128203;';
+        case 'marc_095': return 'MARC';
+        default: return '?';
+    }
+}
+
+function selectType(key) {
+    // Update selection UI
+    document.querySelectorAll('.type-card').forEach(el => el.classList.remove('selected'));
+    document.getElementById(`type-${key}`).classList.add('selected');
+
+    selectedType = conversionTypes.find(t => t.key === key);
+
+    // Update file input accept
+    const fileInput = document.getElementById('file-input');
+    fileInput.accept = selectedType.accept;
+
+    // Update drop zone text
+    const dropText = document.getElementById('drop-text');
+    dropText.textContent = `Drop ${selectedType.accept} file here or click to upload`;
+
+    // Show dependency info
+    const depInfo = document.getElementById('dependency-info');
+    if (selectedType.needs_keepsite && !selectedType.keepsite_available) {
+        depInfo.innerHTML = `
+            <div class="alert alert-warning">
+                <strong>Missing dependency:</strong> keepsite_service_points.tsv not found in
+                config/${clientCode}/mapping_files/.
+                Please upload this file before converting.
+            </div>`;
+        depInfo.style.display = 'block';
+    } else {
+        depInfo.style.display = 'none';
+    }
+
+    // Reset file input
+    fileInput.value = '';
+    updateConvertButton();
+}
+
+function setupDropZone() {
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+
+    dropZone.addEventListener('click', () => {
+        if (selectedType) fileInput.click();
+    });
+
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (selectedType) dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        if (!selectedType) return;
+        if (e.dataTransfer.files.length > 0) {
+            fileInput.files = e.dataTransfer.files;
+            updateConvertButton();
+        }
+    });
+
+    fileInput.addEventListener('change', () => {
+        updateConvertButton();
+    });
+}
+
+function updateConvertButton() {
+    const btn = document.getElementById('convert-btn');
+    const fileInput = document.getElementById('file-input');
+    const iteration = document.getElementById('iteration-select').value;
+    const dropText = document.getElementById('drop-text');
+
+    const hasFile = fileInput.files && fileInput.files.length > 0;
+    const hasType = !!selectedType;
+    const hasIteration = !!iteration;
+    const depOk = !selectedType || !selectedType.needs_keepsite || selectedType.keepsite_available;
+
+    btn.disabled = !(hasFile && hasType && hasIteration && depOk);
+
+    if (hasFile) {
+        const file = fileInput.files[0];
+        const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+        dropText.textContent = `${file.name} (${sizeMB} MB)`;
+    }
+}
+
+async function startConversion() {
+    const btn = document.getElementById('convert-btn');
+    const fileInput = document.getElementById('file-input');
+    const iteration = document.getElementById('iteration-select').value;
+
+    if (!selectedType || !fileInput.files[0] || !iteration) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Converting...';
+
+    // Show progress
+    document.getElementById('conversion-progress').style.display = 'block';
+    document.getElementById('conversion-result').style.display = 'none';
+
+    const formData = new FormData();
+    formData.append('conversion_type', selectedType.key);
+    formData.append('iteration', iteration);
+    formData.append('file', fileInput.files[0]);
+
+    try {
+        const response = await fetch(`${ROOT_PATH}/api/clients/${clientCode}/convert`, {
+            method: 'POST',
+            body: formData,
+        });
+
+        const result = await response.json();
+
+        // Hide progress
+        document.getElementById('conversion-progress').style.display = 'none';
+
+        // Show result
+        showResult(result);
+
+        // Add to history
+        addToHistory(result);
+
+    } catch (error) {
+        document.getElementById('conversion-progress').style.display = 'none';
+        alert('Conversion error: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Convert';
+    }
+}
+
+function showResult(result) {
+    const resultDiv = document.getElementById('conversion-result');
+    const titleEl = document.getElementById('result-title');
+    const statsDiv = document.getElementById('result-stats');
+    const warningsDiv = document.getElementById('result-warnings');
+    const filesDiv = document.getElementById('result-files');
+
+    resultDiv.style.display = 'block';
+
+    if (result.status === 'error') {
+        titleEl.textContent = 'Conversion Failed';
+        titleEl.style.color = '#ff6b6b';
+        statsDiv.innerHTML = '';
+        warningsDiv.style.display = 'none';
+        filesDiv.innerHTML = `<div class="alert alert-danger">${result.message}</div>`;
+        return;
+    }
+
+    titleEl.textContent = 'Conversion Successful';
+    titleEl.style.color = '#4ecca3';
+
+    // Build stats based on conversion type
+    let statsHtml = '';
+    if (result.converted !== undefined) {
+        statsHtml += statBox(result.converted, 'Converted');
+    }
+    if (result.skipped_paid !== undefined && result.skipped_paid > 0) {
+        statsHtml += statBox(result.skipped_paid, 'Skipped (Paid)', 'text-warning');
+    }
+    if (result.skipped_other !== undefined && result.skipped_other > 0) {
+        statsHtml += statBox(result.skipped_other, 'Skipped (Error)', 'text-danger');
+    }
+    if (result.holdings_count !== undefined) {
+        statsHtml += statBox(result.holdings_count, 'Holdings');
+    }
+    if (result.items_count !== undefined) {
+        statsHtml += statBox(result.items_count, 'Items');
+    }
+    if (result.total_marc_records !== undefined && result.total_marc_records > 0) {
+        statsHtml += statBox(result.total_marc_records, 'MARC Records');
+    }
+    if (result.records_with_095 !== undefined && result.records_with_095 > 0) {
+        statsHtml += statBox(result.records_with_095, 'With 095 Field');
+    }
+    if (result.keepsite_mappings !== undefined) {
+        statsHtml += statBox(result.keepsite_mappings, 'Keepsite Mappings');
+    }
+    statsDiv.innerHTML = statsHtml;
+
+    // Warnings
+    if (result.warnings && result.warnings.length > 0) {
+        warningsDiv.style.display = 'block';
+        warningsDiv.innerHTML = result.warnings.map(w =>
+            `<div class="alert alert-warning">${w}</div>`
+        ).join('');
+    } else {
+        warningsDiv.style.display = 'none';
+    }
+
+    // Output files
+    if (result.output_files && result.output_files.length > 0) {
+        filesDiv.innerHTML = '<strong>Output files:</strong><ul>' +
+            result.output_files.map(f => `<li><code>${f}</code></li>`).join('') +
+            '</ul>';
+    }
+}
+
+function statBox(value, label, colorClass) {
+    return `
+        <div class="stat-box">
+            <span class="stat-value ${colorClass || ''}">${value}</span>
+            <span class="stat-label">${label}</span>
+        </div>`;
+}
+
+function addToHistory(result) {
+    conversionHistory.unshift({
+        time: new Date().toLocaleString('zh-TW'),
+        type: selectedType ? selectedType.key : '-',
+        source: result.source_filename || '-',
+        status: result.status,
+        records: result.converted || result.items_count || 0,
+    });
+
+    const tbody = document.getElementById('history-table');
+    tbody.innerHTML = conversionHistory.map(h => `
+        <tr>
+            <td>${h.time}</td>
+            <td>${h.type}</td>
+            <td>${h.source}</td>
+            <td><span class="badge badge-${h.status === 'success' ? 'success' : 'danger'}">${h.status}</span></td>
+            <td>${h.records}</td>
+        </tr>
+    `).join('');
+}
+
+// Listen for iteration change
+document.getElementById('iteration-select').addEventListener('change', updateConvertButton);
+</script>
+
+<style>
+.type-cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+}
+@media (max-width: 768px) {
+    .type-cards { grid-template-columns: repeat(2, 1fr); }
+}
+
+.type-card {
+    background: var(--bg-secondary);
+    border: 2px solid transparent;
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+}
+.type-card:hover {
+    border-color: #4ecca3;
+    background: rgba(78, 204, 163, 0.05);
+}
+.type-card.selected {
+    border-color: #4ecca3;
+    background: rgba(78, 204, 163, 0.1);
+}
+.type-card-icon {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    color: #4ecca3;
+}
+.type-card-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+.type-card-dep {
+    font-size: 0.75rem;
+    margin-top: 0.25rem;
+}
+.dep-ok { color: #4ecca3; }
+.dep-missing { color: #ff6b6b; }
+
+.file-drop-zone {
+    border: 2px dashed #555;
+    border-radius: 8px;
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    color: var(--text-muted);
+}
+.file-drop-zone:hover,
+.file-drop-zone.dragover {
+    border-color: #4ecca3;
+    background: rgba(78, 204, 163, 0.05);
+}
+
+.stat-box {
+    text-align: center;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+.stat-value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+.stat-label {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+.grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+}
+@media (max-width: 768px) {
+    .grid-3 { grid-template-columns: repeat(2, 1fr); }
+}
+
+.alert-warning {
+    background: rgba(255, 193, 7, 0.15);
+    border: 1px solid #ffc107;
+    color: #ffc107;
+    padding: 0.75rem;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+}
+.alert-danger {
+    background: rgba(220, 53, 69, 0.2);
+    border: 1px solid #dc3545;
+    color: #ff6b6b;
+    padding: 0.75rem;
+    border-radius: 4px;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+</style>
+{% endblock %}

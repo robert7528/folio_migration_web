@@ -54,18 +54,16 @@ def convert_datetime(dt_str: str) -> str:
     return f"{date_part}T{time_part}+08:00"
 
 
-def main():
-    if len(sys.argv) < 3:
-        print(f"Usage: {sys.argv[0]} <input_csv> <output_tsv> [client_code]")
-        sys.exit(1)
+def convert(input_csv: str, output_tsv: str, client_code: str = "default") -> dict:
+    """Convert HyLib fee/fine CSV to FOLIO feefines.tsv.
 
-    input_csv = sys.argv[1]
-    output_tsv = sys.argv[2]
-    client_code = sys.argv[3] if len(sys.argv) > 3 else "default"
-
+    Returns:
+        {"converted": int, "skipped_paid": int, "skipped_other": int, "warnings": list}
+    """
     rows = []
     skipped_paid = 0
     skipped_other = 0
+    warnings = []
 
     with open(input_csv, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -81,7 +79,7 @@ def main():
                 total = float(row["total"].strip())
                 contribute = float(row.get("contribute", "0").strip() or "0")
             except (ValueError, KeyError) as e:
-                print(f"WARNING: skipping row with invalid amount: {e}")
+                warnings.append(f"Skipping row with invalid amount: {e}")
                 skipped_other += 1
                 continue
 
@@ -92,7 +90,7 @@ def main():
             try:
                 billed_date = convert_datetime(row["insert_date"])
             except (ValueError, KeyError) as e:
-                print(f"WARNING: skipping row with invalid date: {e}")
+                warnings.append(f"Skipping row with invalid date: {e}")
                 skipped_other += 1
                 continue
 
@@ -115,11 +113,33 @@ def main():
         writer.writeheader()
         writer.writerows(rows)
 
-    print(f"Converted {len(rows)} unpaid fee/fines to {output_tsv}")
-    if skipped_paid:
-        print(f"Skipped {skipped_paid} paid/closed records (status != 0)")
-    if skipped_other:
-        print(f"Skipped {skipped_other} records due to errors")
+    return {
+        "converted": len(rows),
+        "skipped_paid": skipped_paid,
+        "skipped_other": skipped_other,
+        "warnings": warnings,
+        "output_files": [output_tsv],
+    }
+
+
+def main():
+    if len(sys.argv) < 3:
+        print(f"Usage: {sys.argv[0]} <input_csv> <output_tsv> [client_code]")
+        sys.exit(1)
+
+    result = convert(
+        sys.argv[1],
+        sys.argv[2],
+        sys.argv[3] if len(sys.argv) > 3 else "default",
+    )
+
+    print(f"Converted {result['converted']} unpaid fee/fines to {sys.argv[2]}")
+    if result["skipped_paid"]:
+        print(f"Skipped {result['skipped_paid']} paid/closed records (status != 0)")
+    if result["skipped_other"]:
+        print(f"Skipped {result['skipped_other']} records due to errors")
+    for w in result["warnings"]:
+        print(f"WARNING: {w}")
 
 
 if __name__ == "__main__":

@@ -60,17 +60,14 @@ def load_keepsite_mapping(tsv_path: str) -> dict:
     return mapping
 
 
-def main():
-    if len(sys.argv) < 4:
-        print(f"Usage: {sys.argv[0]} <input_csv> <output_tsv> <keepsite_mapping_tsv>")
-        sys.exit(1)
+def convert(input_csv: str, output_tsv: str, keepsite_tsv: str) -> dict:
+    """Convert HyLib loan CSV to FOLIO loans.tsv.
 
-    input_csv = sys.argv[1]
-    output_tsv = sys.argv[2]
-    keepsite_tsv = sys.argv[3]
-
+    Returns:
+        {"converted": int, "warnings": list, "output_files": list}
+    """
     keepsite_map = load_keepsite_mapping(keepsite_tsv)
-    print(f"Loaded {len(keepsite_map)} keepsite -> service point mappings")
+    warnings = []
 
     unmapped = set()
     rows = []
@@ -97,14 +94,32 @@ def main():
             })
 
     if unmapped:
-        print(f"WARNING: unmapped lendKeepSiteId values: {sorted(unmapped)}")
+        warnings.append(f"Unmapped lendKeepSiteId values: {sorted(unmapped)}")
 
     with open(output_tsv, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=LOANS_TSV_HEADERS, delimiter="\t")
         writer.writeheader()
         writer.writerows(rows)
 
-    print(f"Converted {len(rows)} loans to {output_tsv}")
+    return {
+        "converted": len(rows),
+        "keepsite_mappings": len(keepsite_map),
+        "warnings": warnings,
+        "output_files": [output_tsv],
+    }
+
+
+def main():
+    if len(sys.argv) < 4:
+        print(f"Usage: {sys.argv[0]} <input_csv> <output_tsv> <keepsite_mapping_tsv>")
+        sys.exit(1)
+
+    result = convert(sys.argv[1], sys.argv[2], sys.argv[3])
+
+    print(f"Loaded {result['keepsite_mappings']} keepsite -> service point mappings")
+    print(f"Converted {result['converted']} loans to {sys.argv[2]}")
+    for w in result["warnings"]:
+        print(f"WARNING: {w}")
 
 
 if __name__ == "__main__":
