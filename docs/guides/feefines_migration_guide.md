@@ -25,10 +25,10 @@ HyLib CSV → convert_hylib_feefines.py → feefines.tsv
 
 ## FOLIO 前置設定
 
-在 FOLIO 設定 → 費用/罰款 中：
+在 FOLIO 設定 → 使用者 → 費用/罰款 中：
 
 1. **建立 Owner**：`Tunghai University`
-   - 路徑：設定 → 費用/罰款 → **對象**（Owners）→ 新增
+   - 路徑：設定 → 使用者 → 費用/罰款 → **對象**（Owners）→ 新增
    - **注意**：不要在「轉帳帳戶」（Transfer accounts）中新增，那是不同的功能，會出現錯誤
    - 建好後在同一頁面將所有服務點關聯到此 Owner
    - 如 UI 無法使用，可用 API 建立：
@@ -40,7 +40,7 @@ HyLib CSV → convert_hylib_feefines.py → feefines.tsv
        -d '{"id": "'$(uuidgen)'", "owner": "Tunghai University", "desc": "東海大學圖書館"}'
      ```
 2. **建立 Fee/Fine Type**：`Overdue fine`
-   - 路徑：設定 → 費用/罰款 → **手動費用/罰款類型** → 選擇 Owner → 新增
+   - 路徑：設定 → 使用者 → 費用/罰款 → **人工收費**（Manual charges）→ 選擇 Owner → 新增
    - 或用 API：
      ```bash
      curl -s -X POST "${FOLIO_URL}/feefines" \
