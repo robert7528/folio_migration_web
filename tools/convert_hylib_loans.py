@@ -1,11 +1,19 @@
-"""Convert THU loan CSV to FOLIO loans.tsv for LoansMigrator.
+"""Convert HyLib loan CSV to FOLIO loans.tsv for LoansMigrator.
 
 Usage (on Linux):
     cd /folio/folio_migration_web
-    python tools/convert_thu_loans.py \
-        clients/thu/iterations/thu_migration/source_data/loans/thu_loan.csv \
-        clients/thu/iterations/thu_migration/source_data/loans/loans.tsv \
-        config/thu/mapping_files/keepsite_service_points.tsv
+    python tools/convert_hylib_loans.py \
+        clients/<client>/iterations/<iteration>/source_data/loans/<input>.csv \
+        clients/<client>/iterations/<iteration>/source_data/loans/loans.tsv \
+        config/<client>/mapping_files/keepsite_service_points.tsv
+
+HyLib CSV columns used:
+    barcode         -> item_barcode
+    readerCode      -> patron_barcode
+    returndate      -> due_date
+    lenddate        -> out_date
+    continueNum     -> renewal_count
+    lendKeepSiteId  -> service_point_id (via keepsite mapping)
 """
 
 import csv

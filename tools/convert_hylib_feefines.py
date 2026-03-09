@@ -1,10 +1,14 @@
-"""Convert THU fee/fine CSV to FOLIO feefines.tsv for ManualFeeFinesTransformer.
+"""Convert HyLib fee/fine CSV to FOLIO feefines.tsv for ManualFeeFinesTransformer.
 
 Usage (on Linux):
     cd /folio/folio_migration_web
-    python tools/convert_thu_feefines.py \
-        clients/thu/iterations/thu_migration/source_data/fees_fines/thu_feefines-15.csv \
-        clients/thu/iterations/thu_migration/source_data/fees_fines/feefines.tsv
+    python tools/convert_hylib_feefines.py \
+        clients/<client>/iterations/<iteration>/source_data/fees_fines/<input>.csv \
+        clients/<client>/iterations/<iteration>/source_data/fees_fines/feefines.tsv \
+        <client_code>
+
+    The <client_code> argument sets the lending_library field (used for Owner mapping).
+    Example: python tools/convert_hylib_feefines.py input.csv output.tsv thu
 
 Source CSV columns (HyLib):
     reader_code, barcode, total, contribute, insert_date, name, fineTypeId, status
@@ -52,11 +56,12 @@ def convert_datetime(dt_str: str) -> str:
 
 def main():
     if len(sys.argv) < 3:
-        print(f"Usage: {sys.argv[0]} <input_csv> <output_tsv>")
+        print(f"Usage: {sys.argv[0]} <input_csv> <output_tsv> [client_code]")
         sys.exit(1)
 
     input_csv = sys.argv[1]
     output_tsv = sys.argv[2]
+    client_code = sys.argv[3] if len(sys.argv) > 3 else "default"
 
     rows = []
     skipped_paid = 0
@@ -101,7 +106,7 @@ def main():
                 "item_barcode": item_barcode,
                 "billed_date": billed_date,
                 "type": fine_type_name,
-                "lending_library": "thu",
+                "lending_library": client_code,
                 "borrowing_desk": "",
             })
 

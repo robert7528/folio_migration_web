@@ -12,14 +12,14 @@
 ## 遷移流程概覽
 
 ```
-HyLib CSV → convert_thu_feefines.py → feefines.tsv
+HyLib CSV → convert_hylib_feefines.py → feefines.tsv
          → ManualFeeFinesTransformer → extradata 檔案
          → BatchPoster (Extradata) → POST 到 FOLIO
 ```
 
 | 步驟 | 工具 | 說明 |
 |------|------|------|
-| 1. 轉換 | `convert_thu_feefines.py` | HyLib CSV 轉為 FOLIO TSV 格式 |
+| 1. 轉換 | `convert_hylib_feefines.py` | HyLib CSV 轉為 FOLIO TSV 格式 |
 | 2. Transform | ManualFeeFinesTransformer | TSV 轉為 FOLIO extradata 格式 |
 | 3. Post | BatchPoster (Extradata) | 將 extradata 寫入 FOLIO |
 
@@ -73,10 +73,17 @@ HyLib 匯出的 CSV 檔案（例如 `thu_feefines-15.csv`）：
 ```bash
 cd /folio/folio_migration_web
 
-# 將 HyLib CSV 轉為 FOLIO TSV
-python tools/convert_thu_feefines.py \
+# 將 HyLib CSV 轉為 FOLIO TSV（第三個參數為 client_code，對應 feefine_owners.tsv 的 lending_library）
+python tools/convert_hylib_feefines.py \
+    clients/<client>/iterations/<iteration>/source_data/fees_fines/<input>.csv \
+    clients/<client>/iterations/<iteration>/source_data/fees_fines/feefines.tsv \
+    <client_code>
+
+# 範例（THU）：
+python tools/convert_hylib_feefines.py \
     clients/thu/iterations/thu_migration/source_data/fees_fines/thu_feefines-15.csv \
-    clients/thu/iterations/thu_migration/source_data/fees_fines/feefines.tsv
+    clients/thu/iterations/thu_migration/source_data/fees_fines/feefines.tsv \
+    thu
 ```
 
 輸出範例：

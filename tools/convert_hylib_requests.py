@@ -1,11 +1,11 @@
-"""Convert THU HyLib request CSV to FOLIO requests.tsv for RequestsMigrator.
+"""Convert HyLib request CSV to FOLIO requests.tsv for RequestsMigrator.
 
 Usage (on Linux):
     cd /folio/folio_migration_web
-    python tools/convert_thu_requests.py \
-        clients/thu/iterations/thu_migration/source_data/requests/thu_requests-8.csv \
-        clients/thu/iterations/thu_migration/source_data/requests/requests.tsv \
-        config/thu/mapping_files/keepsite_service_points.tsv
+    python tools/convert_hylib_requests.py \
+        clients/<client>/iterations/<iteration>/source_data/requests/<input>.csv \
+        clients/<client>/iterations/<iteration>/source_data/requests/requests.tsv \
+        config/<client>/mapping_files/keepsite_service_points.tsv
 
 HyLib CSV columns used:
     barcode           -> item_barcode
