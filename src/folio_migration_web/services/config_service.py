@@ -264,10 +264,13 @@ class ConfigService:
         self.ensure_directories()
 
         # Location mapping template
+        # folio_migration_tools HoldingsCsvTransformer/ItemsTransformer uses
+        # "folio_code" (must match FOLIO location codes) and the second column
+        # name must match the source TSV column that contains location data.
         self._write_tsv_template(
             "locations.tsv",
-            ["legacy_code", "folio_code"],
-            [["MAIN", "main/stacks"], ["REF", "main/reference"]],
+            ["folio_code", "LOCATION"],
+            [["main/stacks", "MAIN"], ["main/reference", "REF"]],
         )
 
         # Material types mapping template
@@ -290,14 +293,18 @@ class ConfigService:
         )
 
         # User groups mapping template
+        # Column 1 name must match the legacy_field in user_mapping.json for "patronGroup".
+        # Column 2 must be "folio_group" (required by folio_migration_tools).
+        # Use "*" as fallback row to catch unmapped values.
         self._write_tsv_template(
             "user_groups.tsv",
-            ["legacy_code", "folio_name"],
+            ["PATRON_TYPE", "folio_group"],
             [
                 ["STUDENT", "undergraduate"],
                 ["GRAD", "graduate"],
                 ["FACULTY", "faculty"],
                 ["STAFF", "staff"],
+                ["*", "error"],
             ],
         )
 
