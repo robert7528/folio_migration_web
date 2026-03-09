@@ -127,7 +127,7 @@ TASK_DEFINITIONS = {
             "feefine_owners.tsv",
             "feefine_types.tsv",
         ],
-        "optional_mappings": ["feefines_service_points.tsv"],
+        "optional_mappings": ["feefine_service_points.tsv"],
     },
 }
 
@@ -476,15 +476,19 @@ class ConfigService:
             {
                 "data": [
                     {"folio_field": "legacyIdentifier", "legacy_field": "", "value": "", "description": "Leave this blank."},
-                    {"folio_field": "account.amount", "legacy_field": "AMOUNT", "value": "", "description": "The original amount."},
-                    {"folio_field": "account.remaining", "legacy_field": "REMAINING", "value": "", "description": "The remaining amount."},
-                    {"folio_field": "account.paymentStatus.name", "legacy_field": "", "value": "Outstanding", "description": ""},
-                    {"folio_field": "account.status.name", "legacy_field": "", "value": "Open", "description": ""},
-                    {"folio_field": "account.userId", "legacy_field": "PATRON_BARCODE", "value": "", "description": "The patron's barcode."},
-                    {"folio_field": "account.itemId", "legacy_field": "ITEM_BARCODE", "value": "", "description": "Optional - the barcode of an item."},
-                    {"folio_field": "account.feeFineId", "legacy_field": "FEE_TYPE", "value": "", "description": "The fee/fine type."},
-                    {"folio_field": "account.ownerId", "legacy_field": "OWNER", "value": "", "description": "The fee/fine owner."},
-                    {"folio_field": "feefineaction.dateAction", "legacy_field": "DATE", "value": "", "description": "The date of the fee/fine."},
+                    {"folio_field": "account.amount", "legacy_field": "amount", "value": "", "description": "The original amount."},
+                    {"folio_field": "account.remaining", "legacy_field": "remaining", "value": "", "description": "The remaining amount."},
+                    {"folio_field": "account.paymentStatus.name", "legacy_field": "", "value": "Outstanding", "description": "This must be one of the allowed statuses."},
+                    {"folio_field": "account.status.name", "legacy_field": "", "value": "Open", "description": "Whatever you map this to, it will be Open/Closed depending on the remaining amount."},
+                    {"folio_field": "account.userId", "legacy_field": "patron_barcode", "value": "", "description": "The patron's barcode. The migration task will try to match this to a user in FOLIO."},
+                    {"folio_field": "account.itemId", "legacy_field": "item_barcode", "value": "", "description": "Optional - the barcode of an item associated with the fee/fine. The migration task will try to match this to an item in FOLIO."},
+                    {"folio_field": "account.feeFineId", "legacy_field": "type", "value": "", "description": "This is the feefine type (Settings > Users > Fee/Fine > Manual charges)."},
+                    {"folio_field": "account.ownerId", "legacy_field": "lending_library", "value": "", "description": "The fee fine owner."},
+                    {"folio_field": "feefineaction.accountId", "legacy_field": "", "value": "", "description": "Leave blank. This will link the feeFineAction to the account."},
+                    {"folio_field": "feefineaction.userId", "legacy_field": "patron_barcode", "value": "", "description": "The patron's barcode. The migration task will try to match this to a user in FOLIO."},
+                    {"folio_field": "feefineaction.dateAction", "legacy_field": "billed_date", "value": "", "description": "Date when the fee/fine was billed."},
+                    {"folio_field": "feefineaction.comments", "legacy_field": "", "value": "", "description": "In addition to any source field mapped to this, we will also add a string representing the entire source object as a comment."},
+                    {"folio_field": "feefineaction.createdAt", "legacy_field": "borrowing_desk", "value": "", "description": "The service point where this fee/fine was created."},
                 ]
             },
         )
@@ -492,15 +496,22 @@ class ConfigService:
         # Fee/fine owners template
         self._write_tsv_template(
             "feefine_owners.tsv",
-            ["legacy_owner", "folio_owner"],
-            [["MAIN", "Main Library"], ["BRANCH", "Branch Library"]],
+            ["lending_library", "folio_owner"],
+            [["*", "Main Library"]],
         )
 
         # Fee/fine types template
         self._write_tsv_template(
             "feefine_types.tsv",
-            ["legacy_type", "folio_type"],
-            [["OVERDUE", "Overdue fine"], ["LOST", "Lost item fee"], ["DAMAGE", "Damaged item"]],
+            ["type", "folio_feeFineType"],
+            [["*", "Overdue fine"]],
+        )
+
+        # Fee/fine service points template (required by ManualFeeFinesTransformer)
+        self._write_tsv_template(
+            "feefine_service_points.tsv",
+            ["borrowing_desk", "folio_name"],
+            [["*", "Main circulation desk"]],
         )
 
     def _write_tsv_template(
