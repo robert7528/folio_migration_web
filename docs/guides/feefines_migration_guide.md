@@ -25,10 +25,13 @@ HyLib CSV → convert_hylib_feefines.py → feefines.tsv
 
 ## FOLIO 前置設定
 
-在 FOLIO Settings → Fee/Fine 中：
+在 FOLIO 設定 → 費用/罰款 中：
 
 1. **建立 Owner**：`Tunghai University`
-   - FOLIO UI 可能會出現 "儲存資料時發生錯誤"（ownerId UUID bug），改用 API 建立：
+   - 路徑：設定 → 費用/罰款 → **對象**（Owners）→ 新增
+   - **注意**：不要在「轉帳帳戶」（Transfer accounts）中新增，那是不同的功能，會出現錯誤
+   - 建好後在同一頁面將所有服務點關聯到此 Owner
+   - 如 UI 無法使用，可用 API 建立：
      ```bash
      curl -s -X POST "${FOLIO_URL}/owners" \
        -H "Content-Type: application/json" \
@@ -36,9 +39,9 @@ HyLib CSV → convert_hylib_feefines.py → feefines.tsv
        -H "X-Okapi-Token: ${FOLIO_TOKEN}" \
        -d '{"id": "'$(uuidgen)'", "owner": "Tunghai University", "desc": "東海大學圖書館"}'
      ```
-   - 建好後到 FOLIO UI 將所有服務點關聯到此 Owner
 2. **建立 Fee/Fine Type**：`Overdue fine`
-   - 同樣可用 API：
+   - 路徑：設定 → 費用/罰款 → **手動費用/罰款類型** → 選擇 Owner → 新增
+   - 或用 API：
      ```bash
      curl -s -X POST "${FOLIO_URL}/feefines" \
        -H "Content-Type: application/json" \
@@ -273,7 +276,7 @@ Service point mapping TSV 的第二欄必須叫 `folio_name`，不是 `folio_ser
 
 ### Q: FOLIO UI 建立 Owner 時出現 "儲存資料時發生錯誤"
 
-這是 FOLIO 前端的 bug（ownerId 未自動產生 UUID）。改用 API 建立即可（見「FOLIO 前置設定」）。
+確認是否在正確的路徑操作：設定 → 費用/罰款 → **對象**（Owners）。如果誤在「轉帳帳戶」（Transfer accounts）中新增，會出現此錯誤。如 UI 確實無法使用，可改用 API 建立（見「FOLIO 前置設定」）。
 
 ### Q: 驗證全部顯示 not_found
 
