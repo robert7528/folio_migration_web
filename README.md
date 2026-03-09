@@ -7,11 +7,12 @@ Web application for managing FOLIO library migration projects.
 - Create and manage client migration projects
 - Configure FOLIO credentials with encrypted storage
 - Upload source data files (MARC, CSV, JSON)
+- Convert HyLib source data to FOLIO format (fee/fines, loans, requests, MARC 095)
 - Edit migration configuration and mapping files (JSON, TSV)
 - FOLIO reference data UUID lookup (locations, material types, loan types, etc.)
 - Execute migration tasks via folio_migration_tools
 - Validate migration results (record-level comparison & count check)
-- Delete migrated records from FOLIO (instances, holdings, items, users)
+- Delete migrated records from FOLIO (instances, holdings, items, users, fee/fines)
 - Test FOLIO API connections
 
 ## Requirements
@@ -85,6 +86,9 @@ folio_migration_web/
 ├── deployment/           # Deployment configs
 ├── docs/                 # Migration documentation
 ├── tools/                # Migration utility scripts
+│   ├── convert_hylib_feefines.py    # HyLib CSV → feefines.tsv
+│   ├── convert_hylib_loans.py       # HyLib CSV → loans.tsv
+│   ├── convert_hylib_requests.py    # HyLib CSV → requests.tsv
 │   ├── extract_095_standard.py      # Extract Holdings/Items from MARC 095
 │   ├── delete_holdings_by_instance.py  # Delete Holdings/Items from FOLIO
 │   ├── folio_task_analyzer.py       # Analyze migration task configs
