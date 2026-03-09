@@ -429,21 +429,39 @@ chmod +x $PROJECT/scripts/extract_095.py
 
 ## Step 3: 執行 095 提取
 
-```bash
-cd $PROJECT
-source .venv/bin/activate
+### 方法一：透過 Web Portal（建議）
 
-# 執行提取腳本
-python scripts/extract_095.py source_data/instances/bibs.mrc
+1. 開啟 Web Portal → 選擇 Client → 點擊 **Data Conversion**
+2. 選擇 Iteration
+3. 選擇轉換類型：**MARC 095**
+4. 上傳 MARC 檔案（如 `bibs.mrc`）
+5. 點擊 **Convert**
+6. 確認結果：MARC 記錄數、095 欄位數、Holdings/Items 筆數
+7. 輸出檔案自動存到 `source_data/holdings/holdings.tsv` 和 `source_data/items/items.tsv`
+
+> **注意**：因 folio_migration_tools 的 HoldingsCsvTransformer bug，系統會自動將 `holdings.tsv` 額外複製到 `source_data/items/` 目錄。
+
+### 方法二：CLI（Linux server）
+
+```bash
+cd /folio/folio_migration_web
+
+# 使用標準提取工具
+python tools/extract_095_standard.py \
+    clients/<client>/iterations/<iteration>/source_data/instances/bibs.mrc
 
 # 預期輸出：
-# Reading MARC file: source_data/instances/bibs.mrc
+# Reading MARC file: ...bibs.mrc
 # Total MARC records: 1000
 # Records with 095: 950
 # Total 095 fields (items): 1200
 # ...
-# Holdings: 980 unique records -> source_data/holdings/holdings_from_095.tsv
-# Items: 1200 records -> source_data/items/items_from_095.tsv
+# Holdings: 980 unique records -> source_data/holdings/holdings.tsv
+# Items: 1200 records -> source_data/items/items.tsv
+
+# Workaround: 複製 holdings.tsv 到 items/ 目錄（HoldingsCsvTransformer bug）
+cp clients/<client>/iterations/<iteration>/source_data/holdings/holdings.tsv \
+   clients/<client>/iterations/<iteration>/source_data/items/
 ```
 
 ### 確認輸出檔案

@@ -71,7 +71,17 @@ HyLib 匯出的 CSV 檔案（例如 `thu_feefines-15.csv`）：
 
 ## 步驟一：轉換來源資料
 
-在 Linux 伺服器上執行：
+### 方法一：透過 Web Portal（建議）
+
+1. 開啟 Web Portal → 選擇 Client → 點擊 **Data Conversion**
+2. 選擇 Iteration
+3. 選擇轉換類型：**Fee/Fines**
+4. 上傳 HyLib CSV 檔案
+5. 點擊 **Convert**
+6. 確認結果：轉換筆數、跳過筆數、warnings
+7. 輸出檔案自動存到 `source_data/fees_fines/feefines.tsv`
+
+### 方法二：CLI（Linux 伺服器）
 
 ```bash
 cd /folio/folio_migration_web

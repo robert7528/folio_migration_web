@@ -144,7 +144,17 @@ WARNING: unmapped pickupKeepSiteId values: ['99']
 
 位置：`tools/convert_hylib_requests.py`
 
-### 用法（Linux server）
+### 方法一：透過 Web Portal（建議）
+
+1. 開啟 Web Portal → 選擇 Client → 點擊 **Data Conversion**
+2. 選擇 Iteration
+3. 選擇轉換類型：**Requests**
+4. 上傳 HyLib CSV 檔案（如 `thu_requests-8.csv`）
+5. 點擊 **Convert**（系統自動使用 `config/<client>/mapping_files/keepsite_service_points.tsv`）
+6. 確認結果：轉換筆數、未對應的 keepsite warnings
+7. 輸出檔案自動存到 `source_data/requests/requests.tsv`
+
+### 方法二：CLI（Linux server）
 
 ```bash
 cd /folio/folio_migration_web
