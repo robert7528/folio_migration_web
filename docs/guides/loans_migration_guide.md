@@ -10,7 +10,7 @@
 2. [整體流程概覽](#二整體流程概覽)
 3. [來源資料格式](#三來源資料格式)
 4. [Service Point 對應](#四service-point-對應)
-5. [轉換工具：convert_thu_loans.py](#五轉換工具convert_thu_loanspy)
+5. [轉換工具：convert_hylib_loans.py](#五轉換工具convert_hylib_loanspy)
 6. [loans.tsv 格式](#六loanstsv-格式)
 7. [migration_config.json 設定](#七migration_configjson-設定)
 8. [執行 LoansMigrator](#八執行-loansmigrator)
@@ -45,7 +45,7 @@ Instances (書目) ─→ Holdings (館藏) ─→ Items (項目) ─→ Users (
 │     └── thu_loan.csv (HyWeb 系統匯出的借閱中資料)                    │
 │                                                                     │
 │  2. 轉換                                                            │
-│     └── convert_thu_loans.py                                        │
+│     └── convert_hylib_loans.py                                        │
 │         ├── Input:  thu_loan.csv + keepsite_service_points.tsv      │
 │         └── Output: loans.tsv                                       │
 │                                                                     │
@@ -105,15 +105,21 @@ keepsite_id	service_point_id
 
 ---
 
-## 五、轉換工具：convert_thu_loans.py
+## 五、轉換工具：convert_hylib_loans.py
 
-位置：`tools/convert_thu_loans.py`
+位置：`tools/convert_hylib_loans.py`
 
 ### 用法（Linux server）
 
 ```bash
 cd /folio/folio_migration_web
-python tools/convert_thu_loans.py \
+python tools/convert_hylib_loans.py \
+    clients/<client>/iterations/<iteration>/source_data/loans/<input>.csv \
+    clients/<client>/iterations/<iteration>/source_data/loans/loans.tsv \
+    config/<client>/mapping_files/keepsite_service_points.tsv
+
+# 範例（THU）：
+python tools/convert_hylib_loans.py \
     clients/thu/iterations/thu_migration/source_data/loans/thu_loan.csv \
     clients/thu/iterations/thu_migration/source_data/loans/loans.tsv \
     config/thu/mapping_files/keepsite_service_points.tsv
