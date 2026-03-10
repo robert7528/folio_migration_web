@@ -57,7 +57,6 @@ D:\folio_migration_web\                # Git repo root (this directory)
 │   ├── convert_hylib_requests.py     # HyLib CSV → requests.tsv
 │   ├── extract_095_standard.py       # MARC 095 → holdings.tsv + items.tsv
 │   ├── delete_holdings_by_instance.py # Delete Holdings/Items from FOLIO
-│   ├── folio_task_analyzer.py        # Analyze migration task configs
 │   └── folio_env.sh.example          # FOLIO env vars template
 ├── config/                            # Client mapping files (version controlled)
 │   └── thu/mapping_files/            # THU locations, material types, etc.
