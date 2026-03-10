@@ -84,7 +84,10 @@ folio_migration_web/
 ├── static/               # CSS, JavaScript
 ├── templates/            # HTML templates
 ├── deployment/           # Deployment configs
-├── docs/                 # Migration documentation
+├── docs/                 # Documentation
+│   ├── guides/           # Step-by-step migration guides (zh-TW)
+│   ├── analysis/         # Per-task technical analysis (FOLIO API details)
+│   └── issues/           # folio_migration_tools known issues
 ├── tools/                # Migration utility scripts
 │   ├── convert_hylib_feefines.py    # HyLib CSV → feefines.tsv
 │   ├── convert_hylib_loans.py       # HyLib CSV → loans.tsv
