@@ -5,8 +5,10 @@ allowing PMs to convert HyLib source data to FOLIO-compatible TSV
 without command-line access.
 """
 
+import io
 import shutil
 import sys
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 from ..config import get_settings
@@ -128,12 +130,26 @@ class ConversionService:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
+    @staticmethod
+    def _run_tool(fn, *args, **kwargs):
+        """Invoke a CLI tool's convert() while capturing stdout/stderr.
+
+        The tools print progress/diagnostics for CLI use. Under uvicorn workers
+        those writes can raise BrokenPipeError, which would surface as the
+        whole conversion failing. Capture into a buffer instead so prints
+        never touch the worker's stdout.
+        """
+        buf = io.StringIO()
+        with redirect_stdout(buf), redirect_stderr(buf):
+            result = fn(*args, **kwargs)
+        return result, buf.getvalue()
+
     def _convert_feefines(self, input_path: str, source_dir: Path) -> dict:
         """Convert HyLib fee/fine CSV."""
         from convert_hylib_feefines import convert
 
         output_path = str(source_dir / "feefines.tsv")
-        result = convert(input_path, output_path, self.client_code)
+        result, _log = self._run_tool(convert, input_path, output_path, self.client_code)
         result["status"] = "success"
         return result
 
@@ -152,7 +168,7 @@ class ConversionService:
         from convert_hylib_loans import convert
 
         output_path = str(source_dir / "loans.tsv")
-        result = convert(input_path, output_path, str(keepsite_path))
+        result, _log = self._run_tool(convert, input_path, output_path, str(keepsite_path))
         result["status"] = "success"
         return result
 
@@ -171,7 +187,7 @@ class ConversionService:
         from convert_hylib_requests import convert
 
         output_path = str(source_dir / "requests.tsv")
-        result = convert(input_path, output_path, str(keepsite_path))
+        result, _log = self._run_tool(convert, input_path, output_path, str(keepsite_path))
         result["status"] = "success"
         return result
 
@@ -187,7 +203,7 @@ class ConversionService:
         holdings_output = str(holdings_dir / "holdings.tsv")
         items_output = str(items_dir / "items.tsv")
 
-        result = convert(input_path, holdings_output, items_output)
+        result, _log = self._run_tool(convert, input_path, holdings_output, items_output)
 
         # Workaround: folio_migration_tools bug — HoldingsCsvTransformer
         # looks in source_data/items/ instead of source_data/holdings/

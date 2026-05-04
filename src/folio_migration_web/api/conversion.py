@@ -70,6 +70,7 @@ async def convert_file(
     # Save uploaded file to temp location
     suffix = Path(file.filename).suffix if file.filename else ".csv"
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+    os.close(tmp_fd)
     try:
         async with aiofiles.open(tmp_path, "wb") as f:
             content = await file.read()
