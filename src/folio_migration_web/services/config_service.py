@@ -567,6 +567,18 @@ class ConfigService:
             except Exception:
                 continue
 
+        # folio_migration_tools BatchPoster defaults rerun_failed_records=True,
+        # which on mass HTTP 422 (e.g. re-posting an already-loaded dataset)
+        # re-posts every failed record at batch_size=1 — hours of serial 422s
+        # plus a multi-MB log that freezes the web UI. Force it off unless a
+        # task explicitly opts in.
+        for task in combined["migrationTasks"]:
+            if (
+                task.get("migrationTaskType") == "BatchPoster"
+                and "rerun_failed_records" not in task
+            ):
+                task["rerun_failed_records"] = False
+
         # Save combined config
         combined_path = self.mapping_files_dir / "migration_config.json"
         combined_path.write_text(
