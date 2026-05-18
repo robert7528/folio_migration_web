@@ -358,6 +358,11 @@ class ExecutionService:
         """
         result = {}
 
+        # Strip digit-grouping commas so "5,000 records processed" etc. are
+        # parsed as 5000 (the (\d+) patterns below would otherwise stop at
+        # the comma). Only commas between two digits are removed.
+        line = re.sub(r"(?<=\d),(?=\d)", "", line)
+
         # folio_migration_tools: "Done reading 14 records from file"
         match = re.search(r"Done reading (\d+) records from file", line, re.IGNORECASE)
         if match:
@@ -491,6 +496,11 @@ class ExecutionService:
 
         try:
             content = report_file.read_text(encoding="utf-8")
+            # folio_migration_tools reports format counts with thousands
+            # separators (e.g. "Records in file before parsing | 11,802").
+            # The (\d+) patterns below stop at the comma and capture "11".
+            # Strip only digit-grouping commas so every pattern sees 11802.
+            content = re.sub(r"(?<=\d),(?=\d)", "", content)
             result = {}
 
             # Parse folio_migration_tools report format
