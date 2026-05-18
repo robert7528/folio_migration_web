@@ -83,6 +83,54 @@ def try_parse(seg: bytes):
     return rec, None
 
 
+def _raw_ident(seg: bytes):
+    """Best-effort identify a segment WITHOUT relying on leader/directory
+    (works even when both are corrupt). Returns a short label string.
+
+    The directory still ends at the first 0x1E at/after byte 24; the data
+    area follows. 001 is the first control field (no 0x1F). A title hint =
+    first data field's first CJK-bearing subfield value.
+    """
+    de = seg.find(b"\x1e", 24)
+    if de < 0 or de + 1 >= len(seg):
+        return f"head={seg[:40].hex()}"
+    data = seg[de + 1 :]
+    if data.endswith(b"\x1d"):
+        data = data[:-1]
+    bib001 = None
+    title = None
+    for fb in [f for f in data.split(b"\x1e") if f][:30]:
+        if b"\x1f" not in fb:
+            t = fb.decode("utf-8", "replace").strip()
+            if bib001 is None and 0 < len(t) <= 20 and any(c.isdigit() for c in t):
+                bib001 = t
+        elif title is None:
+            for part in fb.split(b"\x1f")[1:]:
+                if not part:
+                    continue
+                v = part[1:].decode("utf-8", "replace")
+                if len(v) >= 4 and any("一" <= ch <= "鿿" for ch in v):
+                    title = v[:50]
+                    break
+    bits = []
+    bits.append(f"001~={bib001}" if bib001 else "001=?")
+    if title:
+        bits.append(f"title~={title}")
+    if not bib001 and not title:
+        bits.append(f"head={seg[:40].hex()}")
+    return "  ".join(bits)
+
+
+def _rec_ident(rec) -> str:
+    """Identify a parsed record that lacks 001, via 035 / 020 / 245."""
+    bits = []
+    for tag in ("035", "020", "245"):
+        fs = rec.get_fields(tag)
+        if fs:
+            bits.append(f"{tag}={fs[0].value()[:60]}")
+    return "  ".join(bits) if bits else "(no 035/020/245 either)"
+
+
 def main(argv):
     args = [a for a in argv if not a.startswith("--")]
     flags = {a for a in argv if a.startswith("--")}
@@ -115,16 +163,16 @@ def main(argv):
             stats["too_short"] += 1
             continue
         if len(seg) > MARC_MAX:
-            skipped["oversized"].append((idx, len(seg)))
+            skipped["oversized"].append((idx, len(seg), _raw_ident(seg)))
             stats["oversized"] += 1
             continue
         rec, err = try_parse(seg)
         if rec is None:
-            skipped["unparseable"].append((idx, err))
+            skipped["unparseable"].append((idx, err, _raw_ident(seg)))
             stats["unparseable"] += 1
             continue
         if not rec.get_fields("001") and not keep_no_001:
-            skipped["no_001"].append(idx)
+            skipped["no_001"].append((idx, _rec_ident(rec)))
             stats["no_001"] += 1
             continue
         kept += fix_leader_length(seg)
@@ -151,15 +199,17 @@ def main(argv):
     lines.append("")
     if skipped["oversized"]:
         lines.append("OVERSIZED (need case-by-case split, e.g. synthesize_seg3.py):")
-        for idx, sz in skipped["oversized"]:
-            lines.append(f"  seg {idx}: {sz:,} bytes")
+        for idx, sz, ident in skipped["oversized"]:
+            lines.append(f"  seg {idx}: {sz:,} bytes  |  {ident}")
     if skipped["unparseable"]:
         lines.append("UNPARSEABLE (leader/encoding broken; usually unsalvageable):")
-        for idx, err in skipped["unparseable"]:
+        for idx, err, ident in skipped["unparseable"]:
             lines.append(f"  seg {idx}: {err}")
+            lines.append(f"           {ident}")
     if skipped["no_001"]:
         lines.append("NO 001 (skipped; rerun with --keep-no-001 if using 035 fallback):")
-        lines.append("  " + ", ".join(f"seg {i}" for i in skipped["no_001"]))
+        for idx, ident in skipped["no_001"]:
+            lines.append(f"  seg {idx}:  {ident}")
     if skipped["too_short"]:
         lines.append("TOO_SHORT (empty / truncated tail segments):")
         lines.append("  " + ", ".join(f"seg {i}" for i in skipped["too_short"]))
