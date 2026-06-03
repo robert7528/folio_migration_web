@@ -161,6 +161,19 @@ HRID（Human Readable ID）是 FOLIO Instance 的可讀識別碼。
 - **`preserve001`**：需確保 001 欄位值唯一且符合 FOLIO HRID 格式要求
 - **HRID 計數器衝突風險**：若測試時 `updateHridSettings: true`，每次執行都會推高計數器。正式遷移前若需重置，可設定 `resetHridSettings: true` 或透過 FOLIO 管理介面手動調整
 
+### `default` 模式在 FOLIO 的實際呈現
+
+用 `default` 跑出來後，在 FOLIO 實例紀錄上會看到：
+
+| 欄位 | 內容 | 說明 |
+|------|------|------|
+| **實例 HRID** | `in` + 流水號（例 `in00002517601`） | FOLIO 自發，**與原系統 bib id 無關**（holdings 用 `ho`、items 用 `it` 前綴） |
+| **管理用之附註**（administrative note） | `Identifier(s) from previous system: <原 MARC 001>`（例 `00647879`） | 原 001 不丟，改存附註備查 |
+
+- 若改用 `preserve001`：HRID 會「直接是」MARC 001 的值，且**不會**有上面那條附註。
+- **原 bib id（001）仍是 migration 的串連鍵**：算決定性 UUID、當 `instances_id_map.json` 的 key、holdings 靠它查 `instanceId`。HRID 純粹給人看，連結不靠它。
+- 要用舊 bib id 在 FOLIO 反查 instance：搜尋「管理用之附註」內容，或對照 `results/instances_id_map.json`。
+
 ---
 
 ## 5. MARC 對應規則來源（重要）
