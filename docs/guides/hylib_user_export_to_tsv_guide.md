@@ -1,0 +1,144 @@
+# HyLib 使用者資料匯出成 TSV 指南（SQL Server）
+
+本指南說明如何把 HyLib（SQL Server）的讀者資料正確匯出成 TSV，供 `UserTransformer` 使用。
+重點是**在匯出階段就避開三個會讓 user transform 出錯或產生壞資料的坑**。
+
+## 為什麼不直接 `SELECT *` 匯 CSV
+
+THU 第一次匯出踩到的實際問題（2026-06-03）：
+
+| 問題 | 症狀 | 根因 |
+|------|------|------|
+| **UTF-8 BOM** | transform 每筆 `Could not get a value ... ['reader_code']`，log 被撐到數 MB | CSV 第一行帶 BOM（`EF BB BF`），`csv.DictReader` 把第一欄 key 讀成 `﻿reader_code`，mapping 對不到 |
+| **欄位錯位** | grade 欄混進 `note` 的內容（中文、結尾多一個 `"`） | `note` 等自由文字欄含**逗號**但沒用引號包，整列欄位往後位移 |
+| **日期欄全毀** | `expired_date` 31695 筆全是 `00:00.0`，transform 把它當「今天」→ user 一灌進去就過期 | 匯出工具對日期欄套了「`分:秒.十分之一`」時間格式，**把日期整個丟掉只剩時間** |
+
+> 三個坑裡，**日期欄全毀最嚴重**：原始日期在壞檔裡已經不存在、救不回來，只能從 SQL 重匯。
+> 重新上傳同一支匯出程式產出的檔**沒有用** —— 問題在匯出端，要從 SQL 修。
+
+## 正確做法：分兩步
+
+### 步驟 1：在 SELECT 裡先把問題欄位處理乾淨
+
+不要 `SELECT *`，把日期欄格式化、把自由文字欄的破壞字元清掉：
+
+```sql
+SELECT
+    reader_code,
+    reader_name,
+    reader_sex,
+    keepSiteId,
+    readerTypeId,
+    readerTypeCode,
+    readerTypeName,
+    address,
+    address2,
+    address3,
+    tel,
+    tel2,
+    -- 日期欄：強制輸出 yyyy-MM-dd（style 23），解決 00:00.0 問題
+    CONVERT(varchar(10), register_date, 23) AS register_date,
+    CONVERT(varchar(10), expired_date, 23)  AS expired_date,
+    email,
+    id_license,
+    -- note 等自由文字欄：清掉 tab/CR/LF（避免破壞 TSV 的列/欄結構）
+    REPLACE(REPLACE(REPLACE(ISNULL(note, ''), CHAR(9), ' '), CHAR(13), ' '), CHAR(10), ' ') AS note,
+    grade
+FROM dbo.users_table
+```
+
+關鍵點：
+
+- **日期欄一律 `CONVERT(varchar(10), 欄位, 23)`** → 輸出 `2026-06-03` 真實日期
+  （要含時間用 style 120：`CONVERT(varchar(19), 欄位, 120)` → `2026-06-03 14:30:00`）
+- **自由文字欄（note、address 等）用 `REPLACE` 清掉 `CHAR(9)`(tab)/`CHAR(13)`(CR)/`CHAR(10)`(LF)**
+  —— 改匯 TSV 後，欄位內若還含 tab/換行一樣會錯位
+- 欄位順序、欄名要跟 `user_mapping.json` 的 `legacy_field` 對得上
+  （THU 已知對映：mapping 用 `reader_sex`、`id_license`，不是 `sex`、`license_id`）
+
+### 步驟 2：匯出成 TSV（tab 分隔）
+
+> 為什麼用 TSV 不用 CSV：`note` 欄含逗號會破壞 CSV 欄位對齊；改 tab 分隔（文字欄通常沒有 tab）直接繞掉這整類問題。
+> THU 之前能正常用的 `users.tsv` 就是 tab 分隔。
+
+> ⚠️ **查詢最前面加 `SET NOCOUNT ON;`** —— 否則 SQL Server 會在結果尾端印「(N 個資料列受到影響)」，
+> SSMS Results to Text / sqlcmd 會把這行（外加空白行）一起存進 TSV。那種只有 1 欄的尾列會讓
+> `csv.DictReader` 把其餘欄位填成 `None`，transform 最後 halt：
+> `usergroups - folio_group (['readerTypeCode']) 'NoneType' object has no attribute 'strip'`。
+> bcp 不會輸出 row-count 訊息，沒這問題。
+
+#### 方法 A：bcp（推薦，UTF-8 無 BOM，可自動化）
+
+```cmd
+bcp "SELECT reader_code, ... FROM db.dbo.users_table" queryout users.tsv ^
+    -c -t"\t" -r"\n" -C 65001 -S 伺服器名 -d 資料庫名 -T
+```
+
+- `-t"\t"`：欄位用 tab 分隔
+- `-r"\n"`：列用換行分隔
+- `-c`：字元模式
+- `-C 65001`：UTF-8 **不帶 BOM**（剛好避開 BOM 坑）
+- `-T`：Windows 整合驗證（用帳密改 `-U 帳號 -P 密碼`）
+- 查詢太長：先建一個 View（把步驟 1 的 SELECT 包成 View），或把 SQL 存成 `.sql` 用 `bcp ... -i query.sql`
+- bcp 不會自動輸出欄位標題，需要 header 時在前面手動補一行 tab 分隔的欄名
+
+#### 方法 B：SSMS 介面（一次性、PM 最好操作）
+
+1. SSMS → **工具 → 選項 → 查詢結果 → SQL Server → 以文字顯示結果**
+2. 「輸出格式」選 **Tab 分隔（Tab delimited）**，勾「包含資料行標題」
+3. 回查詢視窗按 **Ctrl+T**（結果顯示為文字），執行步驟 1 的查詢
+4. 結果區右鍵 → 另存，存成 `.tsv`，編碼選 **UTF-8**
+5. ⚠️ 結果區右鍵「Save Results As」只給 CSV（逗號），要 tab **一定走這條 Results to Text**
+
+#### 方法 C：PowerShell（可自動化，但有兩個雷）
+
+```powershell
+Invoke-Sqlcmd -ServerInstance "伺服器名" -Database "資料庫名" -Query "SELECT ..." |
+  Export-Csv -Path "users.tsv" -Delimiter "`t" -NoTypeInformation -Encoding UTF8
+```
+
+- ⚠️ Windows PowerShell 5.1 的 `-Encoding UTF8` **會加 BOM**
+- ⚠️ `Export-Csv` **每個欄位都會包雙引號**（Python csv 讀得了，但不乾淨）
+- → 自動化還是推**方法 A（bcp）**
+
+## 驗收：匯出後在 Linux 上自我檢查
+
+把 TSV 放到 `clients/{code}/iterations/{iter}/source_data/users/` 後，先跑這三條再 transform：
+
+```bash
+# 1. 檢查 BOM（開頭應該直接是欄名第一個字，不是 ef bb bf）
+head -c 3 users.tsv | od -An -tx1
+# 若是 ef bb bf → sed -i '1s/^\xEF\xBB\xBF//' users.tsv
+
+# 2. 檢查 grade 欄（假設第 29 欄）值只剩乾淨代碼，沒有中文/結尾引號
+awk -F'\t' 'NR>1{print $29}' users.tsv | sort | uniq -c
+
+# 3. 檢查 expired_date 欄（假設第 19 欄）是真實日期，不是 00:00.0
+awk -F'\t' 'NR>1{print $19}' users.tsv | sort | uniq -c | head
+
+# 4. 檢查每列欄位數一致（揪出檔尾 row-count 訊息、空白行、被換行拆斷的列）
+awk -F'\t' 'NR==1{n=NF; print "header 欄位數:", n} NF!=n{print "壞列 "NR": "NF" 欄"}' users.tsv | head
+```
+
+判讀：
+
+- 第 1 條無 `ef bb bf`、第 2 條 grade 只剩代碼、第 3 條 expired_date 是 `yyyy-MM-dd`、第 4 條無壞列 → 乾淨可轉 ✅
+- 任何一條不對 → 回 SQL 修匯出，不要硬轉（轉出來是壞資料）
+- 第 4 條若只有檔尾幾列欄位數不對（row-count 訊息/空白行），臨時可濾掉：
+  `awk -F'\t' 'NR==1{n=NF} NF==n' users.tsv > users.clean.tsv && mv users.clean.tsv users.tsv`
+
+## FOLIO 端搭配設定（custom field）
+
+mapping 把 `grade`、`sex`、`licenseid` 寫進 `customFields.*`。**這些欄位必須先在 FOLIO 建好，否則 post 階段整批退件**：
+
+- FOLIO → 設定 → 使用者 → 自訂欄位
+- `licenseid` / `grade` / `sex` 各自要存在，且 **refId 要剛好等於 mapping 裡 `customFields.` 後面的字**
+- 若欄位是**下拉（單/複選）**型別，匯入的值必須是已定義的選項之一
+  （THU 的 grade 真實值是 `0`~`7`）→ 否則報 `Custom field's options do not exist`。
+  最省事是把這類欄位改成 **Text Field**，任何值都收
+- 若某欄 FOLIO 不需要 → 從 mapping 把那條 `customFields.*` 改 `Not mapped` 或刪掉
+
+## 相關
+
+- `docs/guides/migration_tasks_and_mapping_files_guide.md` — mapping 檔總覽
+- memory `user_transform_bom_gotcha.md` — BOM / 欄名不符的快速診斷
