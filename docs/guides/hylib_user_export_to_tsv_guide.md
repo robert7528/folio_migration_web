@@ -86,9 +86,14 @@ bcp "SELECT reader_code, ... FROM db.dbo.users_table" queryout users.tsv ^
 
 1. SSMS → **工具 → 選項 → 查詢結果 → SQL Server → 以文字顯示結果**
 2. 「輸出格式」選 **Tab 分隔（Tab delimited）**，勾「包含資料行標題」
-3. 回查詢視窗按 **Ctrl+T**（結果顯示為文字），執行步驟 1 的查詢
-4. 結果區右鍵 → 另存，存成 `.tsv`，編碼選 **UTF-8**
-5. ⚠️ 結果區右鍵「Save Results As」只給 CSV（逗號），要 tab **一定走這條 Results to Text**
+3. **查詢最前面加 `SET NOCOUNT ON;`**（見上方警告）——
+   這樣 SSMS 就不會在結尾多印「(N 個資料列受到影響)」那行垃圾，省掉事後濾檔
+4. 回查詢視窗按 **Ctrl+T**（結果顯示為文字），執行步驟 1 的查詢
+5. 結果區右鍵 → 另存，存成 `.tsv`，編碼選 **UTF-8**
+6. ⚠️ 結果區右鍵「Save Results As」只給 CSV（逗號），要 tab **一定走這條 Results to Text**
+
+> 備註：`SET NOCOUNT ON` 去掉「N 列受影響」訊息；SSMS 偶爾仍會在最後留一行空白行，
+> 用驗收第 4 條（欄位數檢查）就能抓到，必要時 `awk -F'\t' 'NR==1{n=NF} NF==n'` 濾一下。
 
 #### 方法 C：PowerShell（可自動化，但有兩個雷）
 
