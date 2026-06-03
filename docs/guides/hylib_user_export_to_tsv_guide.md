@@ -134,13 +134,39 @@ awk -F'\t' 'NR==1{n=NF; print "header 欄位數:", n} NF!=n{print "壞列 "NR": 
 
 ## FOLIO 端搭配設定（custom field）
 
-mapping 把 `grade`、`sex`、`licenseid` 寫進 `customFields.*`。**這些欄位必須先在 FOLIO 建好，否則 post 階段整批退件**：
+mapping 把值寫進 `customFields.*` 時，**對應的 custom field 必須先在 FOLIO 建好，否則 post 階段整批退件**（`Total failed = 全部, created: 0`）。光「欄位存在」不夠，refId 跟型別/選項都要對：
 
 - FOLIO → 設定 → 使用者 → 自訂欄位
-- `licenseid` / `grade` / `sex` 各自要存在，且 **refId 要剛好等於 mapping 裡 `customFields.` 後面的字**
-- 若欄位是**下拉（單/複選）**型別，匯入的值必須是已定義的選項之一
-  （THU 的 grade 真實值是 `0`~`7`）→ 否則報 `Custom field's options do not exist`。
-  最省事是把這類欄位改成 **Text Field**，任何值都收
+
+#### 坑 1：refId 要剛好等於 mapping 的 `customFields.` 後面那段
+
+`customFields.licenseid` 就要找 refId = `licenseid` 的欄位；**顯示名稱對不代表 refId 對**。
+（THU 實例：FOLIO 欄位叫 `id_license`，但 mapping 寫 `customFields.licenseid` → 報 `Custom fields do not exist: [licenseid]`。修法是把 mapping 改成 `customFields.id_license` 對齊 FOLIO，或反過來改 FOLIO 欄位。）
+
+#### 坑 2：select（下拉）型欄位 —— 送進去的值要「一字不差」等於選項文字
+
+FOLIO 比對的是**選項的文字本身**（select 欄位沒有「值 vs 標籤」之分，顯示什麼、值就是什麼）。送的值不在選項清單 → 報 `Custom field's options do not exist: [refId = X, options: [送進去的值]]`。三種處理：
+
+1. **改成 Text Field**：任何值都收，最省事（適合不需要固定選項的欄位）。
+2. **保留下拉，把所有來源值補成選項**：來源有幾種值，FOLIO 下拉就要有對應幾個選項，且文字完全一致。
+3. **在 SQL 端把代碼轉成選項文字**（想要 FOLIO 顯示好看的標籤時）：
+   ```sql
+   -- THU grade 實例：來源是代碼 0~7，FOLIO 下拉是「N年級 / 不分年級」
+   CASE grade
+       WHEN '0' THEN '不分年級'
+       WHEN '1' THEN '1年級'
+       WHEN '2' THEN '2年級'
+       WHEN '3' THEN '3年級'
+       WHEN '4' THEN '4年級'
+       WHEN '5' THEN '5年級'
+       WHEN '6' THEN '6年級'
+       WHEN '7' THEN '7年級'
+       ELSE ''
+   END AS grade
+   ```
+   - ⚠️ 字串要跟 FOLIO 選項**完全一致**（全形/半形、數字位置：`1年級` ≠ `年級1`）。建議直接從 FOLIO 下拉複製文字貼進 CASE。
+   - ⚠️ **先確認來源所有值在 FOLIO 都有對應選項**（用 `awk ... | sort | uniq -c` 列出來源有哪些值，逐一比對 FOLIO 下拉，缺的先補）。
+
 - 若某欄 FOLIO 不需要 → 從 mapping 把那條 `customFields.*` 改 `Not mapped` 或刪掉
 
 ### post 前檢查 refId（兩個辦法）
