@@ -62,7 +62,11 @@ class ConversionService:
     def __init__(self, client_code: str):
         self.client_code = client_code
         self.clients_dir = settings.clients_dir
-        self.config_dir = BASE_DIR / "config" / client_code / "mapping_files"
+        # Read mapping files from the live runtime copy (clients/), which is what
+        # the config editor writes to and the migration actually uses. The
+        # version-controlled config/ tree is only the seed template; reading it
+        # here meant UI edits to keepsite_service_points.tsv never took effect.
+        self.config_dir = self.clients_dir / client_code / "mapping_files"
 
     def get_iterations(self) -> list[str]:
         """Get available iterations for this client."""
