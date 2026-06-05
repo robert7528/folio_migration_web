@@ -190,20 +190,68 @@ curl -s "${FOLIO_URL}/service-points?limit=300" -H "X-Okapi-Tenant: ${FOLIO_TENA
 
 貼進編輯器/從 markdown 複製,tab 常被換成空格 → RefDataMapping 用 tab 切欄會整行讀成一欄 → 全失效。用 `printf` 保證 tab：
 
+THU 完整 46 櫃檯版（左欄 = HyLib keepsite_code,右欄 = FOLIO 服務點 name；保留 `*` 當 fallback）：
+
 ```bash
 printf '%s\t%s\n' \
 borrowing_desk folio_name \
 LB 'Main circulation desk' \
 AC '中文系圖取書櫃台' \
+MB '企管系櫃檯' \
+SB '公共事務在職專班櫃檯' \
+PC '化學系櫃檯' \
+EC '化工系櫃檯' \
+BY '博雅書院櫃檯' \
+AP '哲學系櫃檯' \
+MI '國貿系櫃檯' \
+AV '圖書館多媒體資料室櫃檯' \
+AF '外文系櫃檯' \
+EI '工業工程與經營資訊學系櫃檯' \
+ED '工業設計系櫃檯' \
+SQ '師資培育中心櫃檯' \
+EA '建築系櫃檯' \
+CAT '採編組' \
+CB '推廣部櫃檯' \
+SI '政治系櫃檯' \
+AR '教研所2圖書室櫃檯' \
+PM '數學系櫃檯' \
+AJ '日文系櫃檯' \
+GL '景觀系櫃檯' \
+MA '會計系櫃檯' \
+AH '歷史系櫃檯' \
+SL '法律系櫃檯' \
+PP '物理系櫃檯' \
+PE '環境科學系櫃檯' \
+PB '生物系櫃檯' \
+GA '畜產與生物科技學系櫃檯' \
+SW '社工系櫃檯' \
+SO '社會系櫃檯' \
+LM '管院分館櫃檯' \
+MS '統計系櫃檯' \
+SC '經濟系櫃檯' \
+AA '美術系圖流通櫃檯' \
+RFID1 '自助借書機_1' \
+AE '英語中心櫃檯' \
+00 '行政單位櫃檯' \
+SA '行政學系櫃檯' \
+MF '財務金融系櫃檯' \
+MD '資訊管理學系櫃檯' \
+PI '資訊系櫃檯' \
+EE '電機工程學系櫃檯' \
+AM '音樂系櫃檯' \
+GF '食品科學系櫃檯' \
+GR '餐旅系櫃檯' \
 '*' 'Main circulation desk' \
 > clients/thu/mapping_files/feefine_service_points.tsv
-# 驗證：欄間應為 ^I（tab）、值前無空格
+
+# 驗證：欄間應為 ^I（tab）、值前無空格、共 48 行（header + 46 + *）
 cat -A clients/thu/mapping_files/feefine_service_points.tsv | head
-grep -cP '\t' clients/thu/mapping_files/feefine_service_points.tsv   # = 行數
+grep -cP '\t' clients/thu/mapping_files/feefine_service_points.tsv   # 期望 48
 ```
 
-> 完整 46 櫃檯對照表已建於 `clients/thu/mapping_files/feefine_service_points.tsv`。保留 `*` → Main circulation desk 當 fallback：HyLib code 若與 FOLIO 不一致,該筆會落到主櫃檯而非 init 失敗。
-> 驗分流：`grep -o '"createdAt":"[^"]*"' results/extradata_transform_feefines.extradata | sort | uniq -c`。
+> 其他客戶照樣:用上面 API 撈 `code | name`,左欄填**該客戶 HyLib 的 keepsite_code**、右欄填 FOLIO `name`,結尾保留 `*` fallback。
+> `*` → Main circulation desk:HyLib code 若與 FOLIO 不一致,該筆落主櫃檯而非 init 失敗。
+> 驗分流:`grep -o '"createdAt":"[^"]*"' results/extradata_transform_feefines.extradata | sort | uniq -c`。
 
 > ⚠️ 路徑：mapping 活檔在 `clients/{code}/mapping_files/`（執行期用、gitignore）,不是版控的 `config/`。改要改活檔那份。
 
