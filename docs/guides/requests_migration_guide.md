@@ -248,6 +248,33 @@ C719476	d10055001	ba40d992-1bc6-4346-bbbd-f2074d45cb9d	2026-02-24T08:48:08.50000
 
 > `item_files` 和 `patron_files` 是可選的，提供時 RequestsMigrator 會先驗證 barcode 是否存在於已轉換的資料中，不提供時則直接查詢 FOLIO API。
 
+#### 兩種驗證模式：本地檔 vs FOLIO API
+
+RequestsMigrator 用這個條件決定走哪種（`requests_migrator.py:128`）：
+
+```python
+if any(item_files) or any(patron_files):
+    # A. 本地驗證：barcode 必須出現在這些 JSON 裡，才轉入
+else:
+    # B. API 驗證：逐筆拿 item_barcode / patron_barcode 去查 FOLIO（get_item_by_barcode）
+```
+
+| 模式 | 設定 | 適用 |
+|------|------|------|
+| **A. 本地檔驗證** | `item_files` / `patron_files` 指向轉換產出的 JSON | 該批 item/user **剛轉好且檔案完整**時 |
+| **B. FOLIO API 驗證** | `item_files`、`patron_files` **都設成空陣列 `[]`** | item/user **已在 FOLIO**、或本地 JSON 不完整（如 `folio_items_transform_items.json` 只剩最後一批）時 |
+
+> ⚠️ **要走 B（API 驗證），兩個都必須是「空陣列 `[]`」**：
+> ```json
+> "item_files": [],
+> "patron_files": []
+> ```
+> **不要寫成 `[{"file_name": ""}]`** —— 那是「一個空檔名的檔」，`any()` 仍為 True，會走本地驗證並嘗試開啟空檔名 → 直接報錯。
+>
+> ⚠️ **兩個都要清空**：條件是 `any(item_files) OR any(patron_files)`，只要其中一個非空就走本地驗證。若只清 `item_files`、`patron_files` 還留著，`check_barcodes()` 會因 item barcode 集合為空 → **每筆預約都比對不到 → 全部被丟棄**。
+>
+> 走 B 的前提：FOLIO 上**已有對應的 item 與 user**（request 靠 barcode 關聯）。逐筆查 API 較慢但用的是 FOLIO 即時資料，不受本地 JSON 是否完整影響。
+
 ---
 
 ## 八、執行 RequestsMigrator
