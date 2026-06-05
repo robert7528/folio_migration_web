@@ -21,17 +21,20 @@ every value is stripped. The first header carries a UTF-8 BOM -> read utf-8-sig.
     keeproom_code               -> LOCATION (-> locations.tsv)
     collection_code             -> MATERIAL_TYPE (-> material_types.tsv)
     class_type                  -> CALL_NUMBER_TYPE (-> call_number_type_mapping.tsv)
-    new_holdcallNumber_holding  -> holdings CALL_NUMBER + part of HOLDINGS_ID
-    new_holdcallNumber_item     -> item CALL_NUMBER
+    class_no, author_no, description3, description4 -> call numbers (composed, below)
     description2                -> COPY_NUMBER
     description3                -> YEAR (yearCaption)
     description_final           -> ENUMERATION (e.g. v.263)
     remark                      -> item NOTE (general)
     annex                       -> item CHECKOUT_NOTE (circulationNotes, "Check out")
 
-HOLDINGS_ID = marc_id-keeproom_code-collection_code-new_holdcallNumber_holding
-(first three stripped; the call number keeps its internal spaces). Rows that share
-this key collapse to one holdings record with multiple items beneath it.
+Call number = class_no + author_no + description3 (non-empty parts joined with a
+space); only when all three are empty fall back to description4. description4 is
+a FALLBACK, not appended, so volumes differing only by description4 still share a
+holdings. Holdings and items use the same composed call number.
+HOLDINGS_ID = marc_id-keeproom_code-collection_code-<call parts joined with '_'>
+(e.g. 194422-LBSP-MA-830.51_8054_2006). Rows sharing this key collapse to one
+holdings record with multiple items beneath it.
 """
 
 import csv
@@ -72,14 +75,15 @@ def _s(row, key):
     return (row.get(key) or "").strip()
 
 
-def make_holdings_id(bib, location, material, call_number):
-    """Holdings grouping key.
+def make_holdings_id(bib, location, material, call_parts):
+    """Holdings grouping key: marc_id-keeproom_code-collection_code-<callno>.
 
-    bib/location/material are already stripped; call_number keeps its internal
-    spaces (PM wants the natural call-number format, e.g. '830.51 8054 2006').
-    Holdings and items must compute this identically to link.
+    call_parts = the non-empty holdings call-number components (class_no,
+    author_no, description3, description4), joined with '_' (sanitized, legacy
+    095 style). bib/location/material are already stripped. Holdings and items
+    must compute this identically to link.
     """
-    return f"{bib}-{location}-{material}-{call_number}"
+    return "-".join([bib, location, material, "_".join(call_parts)])
 
 
 def convert(input_csv: str, holdings_tsv: str, items_tsv: str) -> dict:
@@ -117,10 +121,21 @@ def convert(input_csv: str, holdings_tsv: str, items_tsv: str) -> dict:
         location = _s(row, "keeproom_code")
         material = _s(row, "collection_code")
         call_type = _s(row, "class_type")
-        call_holding = _s(row, "new_holdcallNumber_holding")
-        call_item = _s(row, "new_holdcallNumber_item")
 
-        holdings_id = make_holdings_id(bib, location, material, call_holding)
+        # Compose the call number from raw parts (PM rule, 2026-06-05 rev):
+        # use class_no+author_no+description3; only when all three are empty fall
+        # back to description4. description4 is a FALLBACK, not appended -- so
+        # volumes that differ only by description4 still share one holdings.
+        class_no = _s(row, "class_no")
+        author_no = _s(row, "author_no")
+        desc3 = _s(row, "description3")
+        desc4 = _s(row, "description4")
+        primary_parts = [p for p in (class_no, author_no, desc3) if p]
+        call_parts = primary_parts if primary_parts else ([desc4] if desc4 else [])
+        call_holding = " ".join(call_parts)
+        call_item = " ".join(call_parts)
+
+        holdings_id = make_holdings_id(bib, location, material, call_parts)
 
         if holdings_id not in holdings:
             holdings[holdings_id] = {
