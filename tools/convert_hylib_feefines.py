@@ -11,7 +11,8 @@ Usage (on Linux):
     Example: python tools/convert_hylib_feefines.py input.csv output.tsv thu
 
 Source CSV columns (HyLib):
-    reader_code, barcode, total, contribute, insert_date, name, fineTypeId, status
+    reader_code, barcode, total, contribute, insert_date, name, fineTypeId, status,
+    lendKeepSiteId (optional; maps to borrowing_desk -> feefineaction.createdAt)
 
 Output TSV columns (FOLIO ManualFeeFinesTransformer):
     amount, remaining, patron_barcode, item_barcode, billed_date, type,
@@ -105,7 +106,7 @@ def convert(input_csv: str, output_tsv: str, client_code: str = "default") -> di
                 "billed_date": billed_date,
                 "type": fine_type_name,
                 "lending_library": client_code,
-                "borrowing_desk": "",
+                "borrowing_desk": row.get("lendKeepSiteId", "").strip(),
             })
 
     with open(output_tsv, "w", encoding="utf-8", newline="") as f:
