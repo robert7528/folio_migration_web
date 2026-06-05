@@ -116,7 +116,7 @@ Skipped 0 paid/closed records (status != 0)
 | `billed_date` | `insert_date` | ISO 8601 格式 +08:00 |
 | `type` | `name` | 罰金類型名稱（用於 mapping） |
 | `lending_library` | 固定 `thu` | 對應到 Fee/Fine Owner |
-| `borrowing_desk` | 留空 | 無對應來源 |
+| `borrowing_desk` | `keepsite_code` | 借出櫃檯代碼（LB/AC/EC…），經 servicePointMap 對到 `feefineaction.createdAt`。來源 CSV 無此欄時留空（fallback 到 `*`） |
 
 ## 步驟二：設定 Mapping 檔案
 
@@ -148,13 +148,64 @@ type	folio_feeFineType
 
 ### feefine_service_points.tsv（必要）
 
+把罰款的「建立服務點」(`feefineaction.createdAt`) 對到 FOLIO 服務點。最簡版本是全部歸一個櫃檯：
+
 ```
 borrowing_desk	folio_name
 *	Main circulation desk
 ```
 
-Service point mapping，`ManualFeeFinesTransformer` 必須要有 `servicePointMap` 欄位。
-欄位名稱必須用 `folio_name`（不是 `folio_servicePointId`）。
+`ManualFeeFinesTransformer` 必須有 `servicePointMap` 欄位指向此檔；第二欄欄名必須是 `folio_name`（不是 `folio_servicePointId` / `folio_servicepoint`）。
+
+#### 對映鏈（三段,搞懂才不會踩雷）
+
+```
+CSV keepsite_code "LB"
+  │ ① 轉換器：keepsite_code → feefines.tsv 的 borrowing_desk（只搬值,不查名稱）
+  ▼
+borrowing_desk = "LB"
+  │ ② servicePointMap（本檔）：borrowing_desk "LB" → folio_name "Main circulation desk"
+  ▼
+folio_name = "Main circulation desk"
+  │ ③ RefDataMapping：folio_name 比對 FOLIO 服務點的 name 欄 → 拿到 UUID
+  ▼
+feefineaction.createdAt = <service point UUID>
+```
+
+- **左欄 `borrowing_desk`** 比對 feefines.tsv 的值（=轉換器寫入的 `keepsite_code`）。
+- **右欄 `folio_name`** 只比對 FOLIO 服務點的 **`name` 欄,且寫死無法改**（`manual_fee_fines_mapper.py` 建 RefDataMapping 時 `key_type="name"`）。所以右欄一定要填**服務點的精確 name**（例 `中文系圖取書櫃台`,不是代碼 `AC`、不是 UUID）。
+- 沒設 `servicePointMap` → 缺第 ② 段,borrowing_desk 到不了 name,createdAt 不會對映（但不報錯）。
+
+#### 取服務點 name 清單
+
+FOLIO UI 服務點頁顯示常是「名稱 (代碼)」,但 `name` 欄只是括號前那段。用 API 確認:
+
+```bash
+curl -s "${FOLIO_URL}/service-points?limit=300" -H "X-Okapi-Tenant: ${FOLIO_TENANT}" -H "X-Okapi-Token: ${FOLIO_TOKEN}" \
+  | python3 -c "import sys,json;[print(s['code'],'|',s['name']) for s in json.load(sys.stdin)['servicepoints']]"
+```
+用 `code` 當左欄(對 keepsite_code)、`name` 當右欄。THU 主櫃檯 FOLIO `code` 是 `LB（Main）` 但 HyLib 用 `LB` → 左欄要寫 HyLib 的 `LB`。
+
+#### 建檔注意：一定要 tab 分隔,別用編輯器貼
+
+貼進編輯器/從 markdown 複製,tab 常被換成空格 → RefDataMapping 用 tab 切欄會整行讀成一欄 → 全失效。用 `printf` 保證 tab：
+
+```bash
+printf '%s\t%s\n' \
+borrowing_desk folio_name \
+LB 'Main circulation desk' \
+AC '中文系圖取書櫃台' \
+'*' 'Main circulation desk' \
+> clients/thu/mapping_files/feefine_service_points.tsv
+# 驗證：欄間應為 ^I（tab）、值前無空格
+cat -A clients/thu/mapping_files/feefine_service_points.tsv | head
+grep -cP '\t' clients/thu/mapping_files/feefine_service_points.tsv   # = 行數
+```
+
+> 完整 46 櫃檯對照表已建於 `clients/thu/mapping_files/feefine_service_points.tsv`。保留 `*` → Main circulation desk 當 fallback：HyLib code 若與 FOLIO 不一致,該筆會落到主櫃檯而非 init 失敗。
+> 驗分流：`grep -o '"createdAt":"[^"]*"' results/extradata_transform_feefines.extradata | sort | uniq -c`。
+
+> ⚠️ 路徑：mapping 活檔在 `clients/{code}/mapping_files/`（執行期用、gitignore）,不是版控的 `config/`。改要改活檔那份。
 
 ## 步驟三：設定 migration_config.json
 
