@@ -21,14 +21,45 @@ HyLib hold 表 CSV (可多檔:一般 + 期刊)
   報 `Bib id not in instance id map`。→ **從 HyLib 用同一組 bib 同時匯出 bib MARC + hold CSV**。
 - 載入順序:**Instances → Holdings → Items**。
 
-## HyLib 來源 CSV 欄位
+## HyLib 來源 CSV 欄位對照
 
-`hold` 表(join `marc`)。SQL Server CHAR 欄位會補尾空白、NULL 會匯成**文字 "NULL"**
-—— 轉換器會自動 `strip()` 並把字面 `"NULL"` 當空。第一欄帶 UTF-8 BOM(轉換器用
-`utf-8-sig` 讀)。關鍵欄位:
+`hold` 表(join `marc`)匯出。SQL Server CHAR 欄位會補尾空白、NULL 會匯成**文字
+"NULL"** —— 轉換器自動 `strip()` 並把字面 `"NULL"` 當空。第一欄帶 UTF-8 BOM
+(轉換器用 `utf-8-sig` 讀)。
 
-`marc_id, hold_id, keeproom_code, collection_code, class_type, class_no, author_no,
-description2, description3, description4, description_final, status, remark, annex, price`
+### 使用到的欄位
+
+| CSV 欄位 | 用途 / 去向 | 必要 |
+|---------|-----------|:---:|
+| `hold_id` | item 唯一值(`legacyIdentifier`/UUID 種子) | ✅ |
+| `marc_id` | `BIB_ID`(連 instance)+ HOLDINGS_ID 第 1 段 | ✅ |
+| `keeproom_code` | `LOCATION` + HOLDINGS_ID 第 2 段 | ✅ |
+| `collection_code` | `MATERIAL_TYPE` + HOLDINGS_ID 第 3 段 | ✅ |
+| `class_type` | `CALL_NUMBER_TYPE` | ✅ |
+| `class_no` | 索書號第 1 段 + HOLDINGS_ID 索書號段 | ◐ |
+| `author_no` | 索書號第 2 段 + HOLDINGS_ID 索書號段 | ◐ |
+| `description3` | 索書號第 3 段 + HOLDINGS_ID 索書號段 | ◐ |
+| `description2` | `COPY_NUMBER`(複本號) | ◐ |
+| `description_final` | `ENUMERATION`(期數/卷號) | ◐ |
+| `barcode` | `BARCODE`(共用碼會清空) | ◐ |
+| `remark` | item note(type=Note) | ◐ |
+| `annex` | circulation note(noteType=Check out) | ◐ |
+| `price` | item note(type=Price;0/空跳過) | ◐ |
+
+(✅ 必要、◐ 有就用沒有就空)
+
+### 不使用的欄位(匯出可省略)
+
+| CSV 欄位 | 為何不用 |
+|---------|---------|
+| `description4` | 已棄用:= `description_final` 重複或字面 "NULL",且本質是卷期非索書號 |
+| `description` | 與 `description_final` 重複 |
+| `holdcallNumber` | 改由 `class_no`+`author_no`+`description3` 組,不用原始欄 |
+| `status` | item 狀態固定輸出 `Available`(不讀此欄) |
+| `keepsite_id/code/name` | location 用 `keeproom_code`,不是 keepsite |
+| `keeproom_id/name` | 用 `keeproom_code` 即可 |
+| `collection_id/name` | 用 `collection_code` 即可 |
+| `destinationdate`、`insert_*`、`update_*` | 目前不對映 |
 
 ## 欄位對映
 
