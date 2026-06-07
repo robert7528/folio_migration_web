@@ -30,12 +30,14 @@ every value is stripped. The first header carries a UTF-8 BOM -> read utf-8-sig.
     price                       -> item PRICE (Price note; blank when empty/zero)
 
 Call number = class_no + author_no + description3 (non-empty parts joined with a
-space); only when all three are empty fall back to description4. description4 is
-a FALLBACK, not appended, so volumes differing only by description4 still share a
-holdings. Holdings and items use the same composed call number.
+space). description4 is NOT used (it duplicates description_final/enumeration or
+is literal "NULL", and is a volume designation, not a call number). Literal
+"NULL" in any field is treated as empty. Holdings and items use the same composed
+call number; when all primary parts are empty the call number is left blank
+(e.g. current periodicals, which then group by bib+location only).
 HOLDINGS_ID = marc_id-keeproom_code-collection_code-<call parts joined with '_'>
-(e.g. 194422-LBSP-MA-830.51_8054_2006). Rows sharing this key collapse to one
-holdings record with multiple items beneath it.
+(e.g. 194422-LBSP-MA-830.51_8054_2006); the call-number segment is omitted when
+there is none. Rows sharing this key collapse to one holdings with many items.
 """
 
 import csv
@@ -73,8 +75,14 @@ DEFAULT_STATUS = "Available"
 
 
 def _s(row, key):
-    """Return a field value stripped of CHAR padding (None-safe)."""
-    return (row.get(key) or "").strip()
+    """Field value stripped of CHAR padding; literal 'NULL' -> '' (None-safe).
+
+    The SQL Server export writes NULLs as the text 'NULL' (e.g. author_no, which
+    is part of the call number). Treat that as empty so it never leaks into call
+    numbers, HOLDINGS_IDs, notes, etc.
+    """
+    v = (row.get(key) or "").strip()
+    return "" if v.upper() == "NULL" else v
 
 
 def _price_note(price: str) -> str:
@@ -146,18 +154,17 @@ def convert(input_csv: str, holdings_tsv: str, items_tsv: str) -> dict:
         class_no = _s(row, "class_no")
         author_no = _s(row, "author_no")
         desc3 = _s(row, "description3")
-        desc4 = _s(row, "description4")
+        # Call number (holdings + item) = class_no + author_no + description3
+        # (non-empty parts). description4 is NOT used: it is either identical to
+        # description_final (already the item enumeration) or literal "NULL", so
+        # it carries no unique value, and it is a volume designation rather than a
+        # call number. When primary is empty the call number / call-number segment
+        # of HOLDINGS_ID is simply omitted (e.g. current periodicals).
         primary_parts = [p for p in (class_no, author_no, desc3) if p]
-        # Holdings call number / HOLDINGS_ID: primary, falling back to description4
-        # when class_no/author_no/description3 are all empty.
-        call_parts = primary_parts if primary_parts else ([desc4] if desc4 else [])
-        call_holding = " ".join(call_parts)
-        # Item call number: primary only (no description4). When primary is empty
-        # the item-level call number is left blank and the item inherits the
-        # holdings call number (FOLIO effective call number).
+        call_holding = " ".join(primary_parts)
         call_item = " ".join(primary_parts)
 
-        holdings_id = make_holdings_id(bib, location, material, call_parts)
+        holdings_id = make_holdings_id(bib, location, material, primary_parts)
 
         if holdings_id not in holdings:
             holdings[holdings_id] = {
