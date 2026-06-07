@@ -148,9 +148,14 @@ def convert(input_csv: str, holdings_tsv: str, items_tsv: str) -> dict:
         desc3 = _s(row, "description3")
         desc4 = _s(row, "description4")
         primary_parts = [p for p in (class_no, author_no, desc3) if p]
+        # Holdings call number / HOLDINGS_ID: primary, falling back to description4
+        # when class_no/author_no/description3 are all empty.
         call_parts = primary_parts if primary_parts else ([desc4] if desc4 else [])
         call_holding = " ".join(call_parts)
-        call_item = " ".join(call_parts)
+        # Item call number: primary only (no description4). When primary is empty
+        # the item-level call number is left blank and the item inherits the
+        # holdings call number (FOLIO effective call number).
+        call_item = " ".join(primary_parts)
 
         holdings_id = make_holdings_id(bib, location, material, call_parts)
 
