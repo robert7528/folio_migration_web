@@ -53,6 +53,14 @@ CONVERSION_TYPES = {
         "output_filename": "holdings.tsv + items.tsv",
         "needs_keepsite": False,
     },
+    "holdings_csv": {
+        "label": "館藏/單冊 CSV (HyLib hold → holdings.tsv + items.tsv)",
+        "accept": ".csv",
+        "source_folder": "items",
+        "output_filename": "holdings.tsv + items.tsv",
+        "needs_keepsite": False,
+        "multi_file": True,
+    },
 }
 
 
@@ -110,7 +118,8 @@ class ConversionService:
         Args:
             iteration: Iteration name (e.g. "thu_migration")
             conversion_type: One of CONVERSION_TYPES keys
-            uploaded_file_path: Path to the uploaded temp file
+            uploaded_file_path: Path to the uploaded temp file, or a list of paths
+                for multi-file conversions (e.g. holdings_csv).
 
         Returns:
             dict with conversion results, warnings, output_files, etc.
@@ -122,15 +131,20 @@ class ConversionService:
         source_dir = self.get_source_data_path(iteration, type_def["source_folder"])
         source_dir.mkdir(parents=True, exist_ok=True)
 
+        # Normalize to a list; single-file conversions use the first path.
+        paths = uploaded_file_path if isinstance(uploaded_file_path, list) else [uploaded_file_path]
+
         try:
             if conversion_type == "feefines":
-                return self._convert_feefines(uploaded_file_path, source_dir)
+                return self._convert_feefines(paths[0], source_dir)
             elif conversion_type == "loans":
-                return self._convert_loans(uploaded_file_path, source_dir)
+                return self._convert_loans(paths[0], source_dir)
             elif conversion_type == "requests":
-                return self._convert_requests(uploaded_file_path, source_dir)
+                return self._convert_requests(paths[0], source_dir)
             elif conversion_type == "marc_095":
-                return self._convert_marc_095(uploaded_file_path, iteration)
+                return self._convert_marc_095(paths[0], iteration)
+            elif conversion_type == "holdings_csv":
+                return self._convert_holdings_csv(paths, iteration)
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
@@ -192,6 +206,35 @@ class ConversionService:
 
         output_path = str(source_dir / "requests.tsv")
         result, _log = self._run_tool(convert, input_path, output_path, str(keepsite_path))
+        result["status"] = "success"
+        return result
+
+    def _convert_holdings_csv(self, input_paths: list, iteration: str) -> dict:
+        """Convert one or more HyLib hold CSVs to holdings + items TSV (merged)."""
+        holdings_dir = self.get_source_data_path(iteration, "holdings")
+        items_dir = self.get_source_data_path(iteration, "items")
+        holdings_dir.mkdir(parents=True, exist_ok=True)
+        items_dir.mkdir(parents=True, exist_ok=True)
+
+        from convert_hylib_holdings_csv import convert
+
+        holdings_output = str(holdings_dir / "holdings.tsv")
+        items_output = str(items_dir / "items.tsv")
+
+        # input_paths is a list; the converter merges all files into one set.
+        result, _log = self._run_tool(convert, input_paths, holdings_output, items_output)
+
+        # Workaround: folio_migration_tools bug — HoldingsCsvTransformer
+        # looks in source_data/items/ instead of source_data/holdings/
+        workaround_path = items_dir / "holdings.tsv"
+        if Path(holdings_output).exists():
+            shutil.copy2(holdings_output, workaround_path)
+            result.setdefault("warnings", []).append(
+                "holdings.tsv also copied to source_data/items/ "
+                "(workaround for folio_migration_tools HoldingsCsvTransformer bug)"
+            )
+            result.setdefault("output_files", []).append(str(workaround_path))
+
         result["status"] = "success"
         return result
 
