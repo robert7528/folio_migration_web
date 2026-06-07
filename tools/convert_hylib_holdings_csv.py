@@ -27,6 +27,7 @@ every value is stripped. The first header carries a UTF-8 BOM -> read utf-8-sig.
     description_final           -> ENUMERATION (e.g. v.263)
     remark                      -> item NOTE (general)
     annex                       -> item CHECKOUT_NOTE (circulationNotes, "Check out")
+    price                       -> item PRICE (Price note; blank when empty/zero)
 
 Call number = class_no + author_no + description3 (non-empty parts joined with a
 space); only when all three are empty fall back to description4. description4 is
@@ -65,6 +66,7 @@ ITEMS_HEADERS = [
     "ENUMERATION",
     "NOTE",
     "CHECKOUT_NOTE",
+    "PRICE",
 ]
 
 DEFAULT_STATUS = "Available"
@@ -73,6 +75,16 @@ DEFAULT_STATUS = "Available"
 def _s(row, key):
     """Return a field value stripped of CHAR padding (None-safe)."""
     return (row.get(key) or "").strip()
+
+
+def _price_note(price: str) -> str:
+    """Price for the Price item note; blank for empty/zero so no junk note."""
+    if not price:
+        return ""
+    try:
+        return "" if float(price) == 0 else price
+    except ValueError:
+        return price
 
 
 def make_holdings_id(bib, location, material, call_parts):
@@ -167,6 +179,7 @@ def convert(input_csv: str, holdings_tsv: str, items_tsv: str) -> dict:
             "ENUMERATION": _s(row, "description_final"),
             "NOTE": _s(row, "remark"),
             "CHECKOUT_NOTE": _s(row, "annex"),
+            "PRICE": _price_note(_s(row, "price")),
         })
 
     with open(holdings_tsv, "w", encoding="utf-8", newline="") as f:
