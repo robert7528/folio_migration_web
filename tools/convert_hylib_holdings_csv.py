@@ -93,9 +93,14 @@ def make_holdings_id(bib, location, material, call_parts):
     call_parts = the non-empty holdings call-number components (class_no,
     author_no, description3, description4), joined with '_' (sanitized, legacy
     095 style). bib/location/material are already stripped. Holdings and items
-    must compute this identically to link.
+    must compute this identically to link. When there is no call number (e.g.
+    current periodicals), the call-number segment is omitted entirely rather than
+    leaving a trailing '-'.
     """
-    return "-".join([bib, location, material, "_".join(call_parts)])
+    base = [bib, location, material]
+    if call_parts:
+        base.append("_".join(call_parts))
+    return "-".join(base)
 
 
 def convert(input_csv: str, holdings_tsv: str, items_tsv: str) -> dict:
