@@ -6,9 +6,12 @@ Replaces extract_095_standard.py for clients that export holdings from the HyLib
 Usage (on Linux):
     cd /folio/folio_migration_web
     python tools/convert_hylib_holdings_csv.py \
-        clients/<client>/iterations/<iter>/source_data/items/<input>.csv \
+        <input1>.csv [<input2>.csv ...] \
         clients/<client>/iterations/<iter>/source_data/holdings/holdings.tsv \
         clients/<client>/iterations/<iter>/source_data/items/items.tsv
+
+    The last two arguments are the outputs; everything before them is an input CSV
+    (e.g. a general-collection export plus a journals export, merged into one set).
 
     Then copy holdings.tsv into source_data/items/ as well (HoldingsCsvTransformer
     has a hardcoded source_data/items/ path).
@@ -111,16 +114,25 @@ def make_holdings_id(bib, location, material, call_parts):
     return "-".join(base)
 
 
-def convert(input_csv: str, holdings_tsv: str, items_tsv: str) -> dict:
-    """Convert HyLib holdings/items CSV to FOLIO holdings.tsv + items.tsv.
+def convert(input_csvs, holdings_tsv: str, items_tsv: str) -> dict:
+    """Convert one or more HyLib holdings/items CSVs to holdings.tsv + items.tsv.
+
+    input_csvs may be a single path (str) or a list of paths. Multiple files
+    (e.g. a general-collection export plus a journals export) are merged into one
+    holdings.tsv + items.tsv: holdings dedupe across all files by HOLDINGS_ID and
+    shared barcodes are detected across the whole set.
 
     Returns:
         {"holdings": int, "items": int, "skipped": int,
          "cleared_barcodes": int, "warnings": list, "output_files": list}
     """
-    # utf-8-sig strips the BOM that sits on the first header.
-    with open(input_csv, "r", encoding="utf-8-sig", newline="") as f:
-        rows = list(csv.DictReader(f))
+    if isinstance(input_csvs, str):
+        input_csvs = [input_csvs]
+    # utf-8-sig strips the BOM that sits on the first header of each file.
+    rows = []
+    for path in input_csvs:
+        with open(path, "r", encoding="utf-8-sig", newline="") as f:
+            rows.extend(csv.DictReader(f))
 
     # Pass 1: find barcodes shared by more than one item. FOLIO requires unique
     # item barcodes, and HyLib reuses placeholder barcodes across distinct items
@@ -221,9 +233,11 @@ def convert(input_csv: str, holdings_tsv: str, items_tsv: str) -> dict:
 
 def main():
     if len(sys.argv) < 4:
-        print(f"Usage: {sys.argv[0]} <input_csv> <holdings_tsv> <items_tsv>")
+        print(f"Usage: {sys.argv[0]} <input_csv> [<input_csv2> ...] <holdings_tsv> <items_tsv>")
         sys.exit(1)
-    result = convert(sys.argv[1], sys.argv[2], sys.argv[3])
+    *inputs, holdings_tsv, items_tsv = sys.argv[1:]
+    result = convert(inputs, holdings_tsv, items_tsv)
+    print(f"Inputs:   {len(inputs)}")
     print(f"Holdings: {result['holdings']}")
     print(f"Items:    {result['items']}")
     print(f"Skipped:  {result['skipped']}")
