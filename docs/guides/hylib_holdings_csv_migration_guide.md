@@ -96,16 +96,25 @@ HyLib hold 表 CSV (可多檔:一般 + 期刊)
 
 ## 索書號 / HOLDINGS_ID 組成規則(重點)
 
-1. **索書號 = `class_no` + `author_no` + `description3`**(非空部分用空格接)。
-   - 例:`830.51 8054 2006`。
-   - holdings 與 item 用**同一組**;item 層空時繼承 holdings。
+1. **索書號 = `class_no` + `author_no` + `description3`**(非空部分用空格接),例 `830.51 8054 2006`。
+   - **`class_no` 是必要條件:沒有分類號就沒有索書號(整個留空)**。孤立的 `author_no` 或
+     年份不構成排架號,**不會拼湊**(早期 6 筆期刊 `author_no="2637"`、`class_no` 空,曾被
+     錯填成索書號 `2637`,已修)。規則「跟著來源走」——來源無分類號(這些筆 `holdcallNumber`
+     本身也空)就留空。
+   - **C / J 兩檔同一條規則**,不分檔。
+   - holdings 與 item 用**同一組**;item 層空時繼承 holdings(effective call number)。
 2. **HOLDINGS_ID 的索書號段** = 同樣三段,但用 **`_`** 接(`830.51_8054_2006`)。
 3. **`description4` 不使用** —— 它不是跟 `description_final` 重複(已是 enumeration)就是
    字面 `"NULL"`,且本質是卷期不是索書號。**早期曾把 desc4 接進索書號,導致期刊依卷號
    碎成大量單件 holdings;移除後正常**(test:1315 items 由 352→62 holdings)。
 4. **字面 `"NULL"` 一律當空**(SQL 匯出把 NULL 寫成文字;`author_no="NULL"` 曾漏進索書號)。
-5. **三段全空(常見於期刊)** → 索書號留白、HOLDINGS_ID 省略索書號段
+5. **`class_no` 空(常見於期刊/期刊合訂本)** → 索書號留白、HOLDINGS_ID 省略索書號段
    (`654196-PCC-PN`),同刊同館藏地各期歸**一個 holdings**、各期當 item(enumeration)。
+
+> **無索書號是正常的(全是期刊)**:某次 C+J 測試 2630 筆中有 917 筆無索書號 —— 全是連續
+> 性出版品(J 的 PN 現期期刊 799 + C 的 S 期刊合訂本 118),`class_no` 都是真空值(0 筆字面
+> "NULL"),**沒有「該有號的一般圖書卻缺號」**。FOLIO 容許 holdings/item 無 callNumber(期刊
+> 靠刊名/題名排架)。若未來出現一般圖書無 class_no,那是來源資料缺漏,要從來源補,不是改轉換器。
 
 ## 期刊(現期期刊)的特性
 
@@ -125,6 +134,17 @@ HyLib hold 表 CSV (可多檔:一般 + 期刊)
   (最後兩個參數是輸出,其餘都是輸入)
 
 holdings 跨檔去重、共用 barcode 跨整個集合偵測。
+
+## 匯入前補值與確認(非轉換器問題)
+
+下列是「來源資料」或「目標欄位」層面,**不是轉換邏輯的 bug**,但匯入前要處理/確認:
+
+| 項目 | 狀況 | 處理 |
+|------|------|------|
+| **BARCODE** | 來源 hold CSV 若**沒有 `barcode` 欄**,則 item 條碼全空(無法流通/掃描) | **一般圖書必補**:請匯出端在 SELECT 加 `barcode` 欄(欄名 `barcode`,轉換器自動帶);期刊常無條碼可空 |
+| **LOAN_TYPE** | 來源無此欄,輸出全空 | **刻意** —— 落 `defaultLoanTypeName=Can circulate`(全可流通)。THU 已確認可接受;若要逐冊不同借閱規則才需另給來源欄 |
+| **無索書號期刊** | 期刊(PN/S)無 callNumber | FOLIO 容許,**不用補**(見索書號規則的備註) |
+| **同卷重複 item** | 同 holdings 下兩筆同 `description_final`、皆無 `COPY_NUMBER`(例 v.161:兩個 hold_id、PRICE 一有一空) | **來源資料問題**:回 HyLib 看兩筆的登錄號/建檔日/barcode —— 真兩本複本則補 `c.1`/`c.2`,重複登錄則刪一筆。轉換器忠實轉了來源 2 筆,非 bug |
 
 ## 對照表(沿用 095 流程那套,通常已涵蓋)
 
