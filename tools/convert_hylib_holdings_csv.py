@@ -167,12 +167,13 @@ def convert(input_csvs, holdings_tsv: str, items_tsv: str) -> dict:
         author_no = _s(row, "author_no")
         desc3 = _s(row, "description3")
         # Call number (holdings + item) = class_no + author_no + description3
-        # (non-empty parts). description4 is NOT used: it is either identical to
-        # description_final (already the item enumeration) or literal "NULL", so
-        # it carries no unique value, and it is a volume designation rather than a
-        # call number. When primary is empty the call number / call-number segment
-        # of HOLDINGS_ID is simply omitted (e.g. current periodicals).
-        primary_parts = [p for p in (class_no, author_no, desc3) if p]
+        # (non-empty parts). A call number REQUIRES a classification (class_no);
+        # a lone author/cutter number is not a shelf location, so when class_no is
+        # empty the whole call number is empty (e.g. periodicals the source itself
+        # left without a call number). description4 is NOT used: it duplicates
+        # description_final (the item enumeration) or is literal "NULL", and is a
+        # volume designation rather than a call number.
+        primary_parts = [p for p in (class_no, author_no, desc3) if p] if class_no else []
         call_holding = " ".join(primary_parts)
         call_item = " ".join(primary_parts)
 
